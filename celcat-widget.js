@@ -148,17 +148,23 @@ function credFingerprint() {
 // connexion n'est envoyée à CELCAT : sinon le widget rejouerait le mauvais mot de
 // passe toutes les 15 min et l'annuaire CY finirait par bloquer le compte.
 // Le verrou saute dès que les identifiants changent, ou via le menu du script.
+// Une tentative posée juste avant l'envoi du mot de passe (voir login) expire
+// d'elle-même : elle ne sert qu'à empêcher deux widgets de tenter en même temps,
+// ou à couvrir un essai dont on n'a jamais vu la réponse (iOS coupe le widget).
+const PENDING_TTL_MIN = 10;
+
 function readAuthLock() {
   try {
     if (!fm.fileExists(AUTHLOCK)) return null;
     const l = JSON.parse(fm.readString(AUTHLOCK));
     if (l.fp !== credFingerprint()) { clearAuthLock(); return null; }   // identifiants modifiés
+    if (l.pending && Date.now() - l.at > PENDING_TTL_MIN * 60000) { clearAuthLock(); return null; }
     return l;
   } catch (e) { return null; }
 }
 
-function setAuthLock(msg) {
-  try { fm.writeString(AUTHLOCK, JSON.stringify({ at: Date.now(), fp: credFingerprint(), msg })); }
+function setAuthLock(msg, pending) {
+  try { fm.writeString(AUTHLOCK, JSON.stringify({ at: Date.now(), fp: credFingerprint(), msg, pending })); }
   catch (e) {}
 }
 
@@ -248,6 +254,9 @@ async function login() {
   r.headers = { "Content-Type": "application/x-www-form-urlencoded" };
   r.body = `Name=${enc(Keychain.get(KC_USER))}&Password=${enc(Keychain.get(KC_PASS))}` +
            `&__RequestVerificationToken=${enc(m[1])}`;
+  // Verrou posé AVANT l'envoi : même si deux widgets se réveillent ensemble, ou si
+  // iOS tue le script avant la réponse, un seul mot de passe part vers CELCAT.
+  setAuthLock("Connexion en cours\u2026", true);
   const html = await r.loadString();
   // Identifiants refusés : CELCAT réaffiche le formulaire au lieu de rediriger vers l'agenda
   if (/name="Password"/i.test(html) && /__RequestVerificationToken/.test(html)) {
@@ -255,6 +264,7 @@ async function login() {
     setAuthLock(msg);          // une seule tentative : on s'arrête là
     throw credError(msg);
   }
+  clearAuthLock();             // connexion acceptée
   if (!FID) detectFid(r.response && r.response.url, html);   // après connexion, CELCAT redirige souvent vers …&fid0=…
 }
 
@@ -350,11 +360,11 @@ async function getEvents(force = false) {
   // Données en mémoire suffisantes ? (nuit, ou téléchargées il y a moins de FETCH_MIN min,
   // ce qui évite aussi que plusieurs widgets téléchargent chacun de leur côté)
   const lock = readAuthLock();
-  AUTH_BAD = !!lock;
+  AUTH_BAD = !!lock && !lock.pending;
   const cached = readCache();
   const fresh = cached && Date.now() - cached.at < (FETCH_MIN - 1) * 60000;
   if (cached && FID && !force && (fresh || isNight()))
-    return { data: cached.data, stale: !!lock, error: lock && lock.msg, fetched: false };
+    return { data: cached.data, stale: AUTH_BAD, error: AUTH_BAD ? lock.msg : undefined, fetched: false };
 
   // Tentative précédente en échec : on patiente (ouvrir le script dans l'app réessaie tout de suite)
   const fail = cached && cached.fail;
@@ -1316,7 +1326,8 @@ let offset = weekParam ? (parseInt(weekParam[2], 10) || 0) : (parseInt(param, 10
 if (family.startsWith("accessory")) view = "next";
 
 if (!config.runsInWidget) {
-  const lock = readAuthLock();
+  const pend = readAuthLock();
+  const lock = pend && !pend.pending ? pend : null;   // tentative en cours : rien à signaler
   const actions = [
     ["Aperçu grand widget",               { family: "large",  view: "day" }],
     ["Aperçu widget moyen",               { family: "medium", view: "day" }],

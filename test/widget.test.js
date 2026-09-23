@@ -169,6 +169,8 @@ const AUTHLOCK = pathn.join(dir, "celcat_auth.json");
 const readCacheFile = () => JSON.parse(fsn.readFileSync(CACHE, "utf8"));
 const readLockFile = () => JSON.parse(fsn.readFileSync(AUTHLOCK, "utf8"));
 const loginPosts = () => global.netCalls.filter(c => /LdapLogin/.test(c.url)).length;
+const pwdPosts = () => global.netCalls.filter(c => /Logon/.test(c.url)).length;
+const expire = extra => { const c = readCacheFile(); c.at = 0; delete c.fail; fsn.writeFileSync(CACHE, JSON.stringify(Object.assign(c, extra))); };
 let pass = 0, fail = 0;
 const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK   " + name); } else { fail++; console.log("  FAIL " + name + " " + extra); } };
 
@@ -251,6 +253,45 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
   ok("re-téléchargement après correction", global.netCalls.length > 0);
   Keychain.set("celcat_pass", "pw");
   fsn.rmSync(AUTHLOCK, { force: true });
+
+  // --- 4 ter. tentative interrompue : le mot de passe ne part qu'une fois
+  console.log("\n[4c] tentative interrompue");
+  expire();
+  NET = { "/LdapLogin/Logon": new Error("coupure"),        // réponse jamais reçue
+          "/Home/GetCalendarData": "<html>login</html>", "/LdapLogin": LOGIN_FORM };
+  global.netCalls = [];
+  await load();
+  ok("mot de passe envoyé une fois", pwdPosts() === 1, JSON.stringify(global.netCalls));
+  ok("verrou provisoire posé", fsn.existsSync(AUTHLOCK) && readLockFile().pending === true,
+     fsn.existsSync(AUTHLOCK) ? fsn.readFileSync(AUTHLOCK, "utf8") : "aucun verrou");
+  ok("pas de badge « identifiants » sur une coupure",
+     !global.texts().some(t => /identifiants/.test(t)), JSON.stringify(global.texts()).slice(0, 200));
+
+  expire();
+  global.netCalls = [];
+  await load();
+  ok("aucun 2e envoi du mot de passe", pwdPosts() === 0, JSON.stringify(global.netCalls));
+
+  // passé 10 min, on a le droit de retenter
+  const stale = readLockFile(); stale.at = Date.now() - 11 * 60000;
+  fsn.writeFileSync(AUTHLOCK, JSON.stringify(stale));
+  expire();
+  global.netCalls = [];
+  await load();
+  ok("nouvelle tentative après 10 min", pwdPosts() === 1, JSON.stringify(global.netCalls));
+
+  // connexion acceptée → le verrou provisoire disparaît
+  let gets = 0;
+  NET = { "/LdapLogin/Logon": "<html>agenda</html>", "/LdapLogin": LOGIN_FORM,
+          "/Home/GetCalendarData": () => (++gets === 1 ? "<html>login</html>" : JSON.stringify(BASE_EVENTS)) };
+  const stale2 = readLockFile(); stale2.at = Date.now() - 11 * 60000;
+  fsn.writeFileSync(AUTHLOCK, JSON.stringify(stale2));
+  expire({ data: [] });
+  global.netCalls = [];
+  await load();
+  ok("succès efface le verrou provisoire", !fsn.existsSync(AUTHLOCK),
+     fsn.existsSync(AUTHLOCK) ? fsn.readFileSync(AUTHLOCK, "utf8") : "");
+  ok("cours reçus après connexion", readCacheFile().data.length === 5);
 
   // --- 5. backoff respecté (panne serveur, pas un refus d'identifiants)
   console.log("\n[5] backoff");
