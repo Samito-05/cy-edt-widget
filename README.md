@@ -6,13 +6,26 @@ Tes cours directement sur l'écran d'accueil : horaires, salles, type de cours, 
 
 > Projet indépendant, sans aucun lien avec CY Tech / CYU. Tes identifiants restent sur ton iPhone.
 
+![Widget en mode clair : vue journée, vue semaine, petit widget en direct et prochain cours](docs/preview-light.png)
+
+<details>
+<summary>Mode sombre et écran verrouillé</summary>
+
+![Les mêmes widgets en mode sombre](docs/preview-dark.png)
+
+![Écran verrouillé : prochain cours et salle, en bandeau et en rond](docs/preview-lockscreen.png)
+
+</details>
+
+*Aperçus réalisés avec des données fictives : cours, salles et enseignants inventés.*
+
 ---
 
 ## Fonctionnalités
 
 - **Vue du jour** — cours du jour (ou du prochain jour de cours), cartes sombres/claires avec bordure colorée par type : CM rouge, TD bleu, TP vert, examen orange.
 - **Mode live** (petit widget) — chaque cours disparaît 30 min après son début pour laisser la place au suivant et à sa salle.
-- **Vue semaine** — planning de la semaine sur un grand widget (filets d'heures, trait rouge sur l'heure courante), avec possibilité d'afficher les semaines suivantes.
+- **Vue semaine** — planning de la semaine sur un grand widget (trait rouge sur l'heure courante), avec possibilité d'afficher les semaines suivantes.
 - **Prochain cours** — seulement le cours suivant et sa salle ; c'est aussi l'affichage automatique sur l'écran verrouillé.
 - **Cours annulés** grisés au lieu d'être masqués ; **fériés et vacances** affichés en bandeau, sans horaire ni rappel.
 - **Notifications** si l'emploi du temps change (salle, horaire, annulation, ajout) sur les 7 prochains jours.
