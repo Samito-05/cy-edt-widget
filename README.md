@@ -32,7 +32,8 @@ Tes cours directement sur l'écran d'accueil : horaires, salles, type de cours, 
 - **Rappel** 10 min avant chaque cours, avec la salle.
 - **Synchronisation calendrier** dans un calendrier iPhone dédié (« Cours CY »).
 - **Mode clair / sombre** automatique.
-- **Cache hors ligne** : les données sont réutilisées si le réseau est indisponible, et aucun appel réseau n'est fait la nuit (22h → 7h). En cas d'échec répété (mot de passe changé, serveur HS), les tentatives sont espacées progressivement.
+- **Cache hors ligne** : les données sont réutilisées si le réseau est indisponible, et aucun appel réseau n'est fait la nuit (22h → 7h). En cas de panne réseau ou serveur, les tentatives sont espacées progressivement.
+- **Protection du compte CY** : si CELCAT refuse les identifiants, le widget s'arrête **dès la première tentative** et ne renvoie plus jamais le mot de passe — sinon il le rejouerait toutes les 15 min et l'annuaire CY finirait par bloquer le compte. L'emploi du temps déjà téléchargé reste affiché, avec le badge « identifiants ✗ ». Le verrou saute dès que l'identifiant ou le mot de passe est modifié (ou via « Débloquer et réessayer une fois » dans le menu).
 
 ## Installation
 
@@ -101,7 +102,8 @@ Lancer le script depuis Scriptable ouvre un menu :
 - aperçus (grand / moyen / petit widget, vue semaine, prochain cours, écran verrouillé) ;
 - **Démo · …** : les mêmes aperçus avec l'emploi du temps fictif ;
 - **Vérifier les mises à jour** ;
-- **Changer mes identifiants** ;
+- **Changer mes identifiants** (libère aussi le verrou après un refus) ;
+- **Débloquer et réessayer une fois** (proposé uniquement après un refus d'identifiants) ;
 - **Tester les notifications** (déclenche la demande d'autorisation iOS) ;
 - **Données brutes (debug)** : JSON des premiers cours, utile pour comprendre un affichage bizarre.
 
@@ -119,7 +121,7 @@ Le widget demande à iOS un rafraîchissement au prochain début/fin de cours, e
 | Symptôme | Piste |
 |---|---|
 | « Ouvre le script dans Scriptable pour te connecter. » | Lancer le script dans l'app et enregistrer les identifiants. |
-| « Identifiants refusés » | Mot de passe CY changé → « Changer mes identifiants ». Après un refus, le widget espace ses tentatives (15 min → 1 h → 3 h → 6 h) ; ouvrir le script réessaie immédiatement. |
+| « Identifiants refusés » / badge « identifiants ✗ » | Mot de passe CY changé → « Changer mes identifiants ». Aucune nouvelle tentative de connexion n'est envoyée tant que l'identifiant ou le mot de passe n'a pas changé : c'est ce qui évite de faire bloquer le compte CY. Les cours déjà en mémoire restent affichés. |
 | Widget vide ou aucun cours | Numéro étudiant (`fid0`) absent ou erroné → le ressaisir via « Changer mes identifiants ». |
 | Une matière s'affiche avec son code | Ajouter une entrée dans `RENAME`. |
 | Pas de notifications | Lancer « Tester les notifications » une fois et autoriser Scriptable dans Réglages iOS. |

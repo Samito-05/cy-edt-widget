@@ -9,9 +9,24 @@ const dir = fsn.mkdtempSync(pathn.join(osn.tmpdir(), "celcat-"));
 global.log = [];
 const say = (...a) => global.log.push(a.join(" "));
 
+// Le widget ne fait aucun appel réseau la nuit (22 h → 7 h) : on décale l'horloge
+// sur 10 h du matin pour que la suite donne le même résultat à toute heure.
+const RealDate = Date;
+const SHIFT = (() => {
+  const now = new RealDate();
+  const ten = new RealDate(now.getTime()); ten.setHours(10, 0, 0, 0);
+  return ten.getTime() - now.getTime();
+})();
+class FakeDate extends RealDate {
+  constructor(...a) { if (a.length === 0) super(RealDate.now() + SHIFT); else super(...a); }
+  static now() { return RealDate.now() + SHIFT; }
+}
+global.Date = FakeDate;
+
 class Color { constructor(h, a = 1) { this.hex = h; this.alpha = a; } }
 Color.dynamic = (l, d) => l;
 Color.orange = () => new Color("#FF9500");
+Color.red = () => new Color("#FF3B30");
 class Font { constructor(n, s) { this.n = n; this.s = s; } }
 Font.systemFont = s => new Font("sys", s);
 Font.boldSystemFont = s => new Font("bold", s);
@@ -150,7 +165,10 @@ function load() {
 }
 
 const CACHE = pathn.join(dir, "celcat_cache.json");
+const AUTHLOCK = pathn.join(dir, "celcat_auth.json");
 const readCacheFile = () => JSON.parse(fsn.readFileSync(CACHE, "utf8"));
+const readLockFile = () => JSON.parse(fsn.readFileSync(AUTHLOCK, "utf8"));
+const loginPosts = () => global.netCalls.filter(c => /LdapLogin/.test(c.url)).length;
 let pass = 0, fail = 0;
 const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK   " + name); } else { fail++; console.log("  FAIL " + name + " " + extra); } };
 
@@ -206,10 +224,39 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
   ok("message identifiants", /Identifiants refusés/.test(c4b.fail && c4b.fail.msg || ""), JSON.stringify(c4b.fail));
   ok("compteur démarre à 1 (backoff 1h)", c4b.fail && c4b.fail.count === 1, JSON.stringify(c4b.fail));
   ok("données conservées", c4b.data.length === 5);
+  ok("verrou posé dès le 1er refus", fsn.existsSync(AUTHLOCK), "pas de celcat_auth.json");
+  ok("verrou sans mot de passe en clair", !JSON.stringify(readLockFile()).includes("pw"),
+     fsn.readFileSync(AUTHLOCK, "utf8"));
 
-  // --- 5. backoff respecté
+  // --- 4 bis. verrou : plus aucune tentative de connexion tant que rien ne change
+  console.log("\n[4b] verrou identifiants");
+  const cL = readCacheFile(); cL.at = 0; delete cL.fail; fsn.writeFileSync(CACHE, JSON.stringify(cL));
+  NET = { "/Home/GetCalendarData": "<html>login</html>", "/LdapLogin": LOGIN_FORM };
+  global.netCalls = [];
+  await load();
+  ok("aucun appel à /LdapLogin", loginPosts() === 0, JSON.stringify(global.netCalls));
+  ok("cours précédents toujours affichés",
+     global.texts().some(t => /Statistiques|Anglais/.test(t)), JSON.stringify(global.texts()).slice(0, 200));
+  ok("badge « identifiants » affiché", global.texts().some(t => /identifiants/.test(t)),
+     JSON.stringify(global.texts()).slice(0, 200));
+  ok("cours conservés en cache", readCacheFile().data.length === 5);
+
+  // mot de passe corrigé → le verrou saute tout seul (empreinte différente)
+  Keychain.set("celcat_pass", "nouveau-pw");
+  const cL2 = readCacheFile(); cL2.at = 0; delete cL2.fail; fsn.writeFileSync(CACHE, JSON.stringify(cL2));
+  NET = { "/Home/GetCalendarData": JSON.stringify(BASE_EVENTS) };
+  global.netCalls = [];
+  await load();
+  ok("verrou levé après changement de mot de passe", !fsn.existsSync(AUTHLOCK));
+  ok("re-téléchargement après correction", global.netCalls.length > 0);
+  Keychain.set("celcat_pass", "pw");
+  fsn.rmSync(AUTHLOCK, { force: true });
+
+  // --- 5. backoff respecté (panne serveur, pas un refus d'identifiants)
   console.log("\n[5] backoff");
-  const c5 = readCacheFile(); c5.at = 0; fsn.writeFileSync(CACHE, JSON.stringify(c5));
+  const c5 = readCacheFile(); c5.at = 0;
+  c5.fail = { at: Date.now(), count: 1, msg: "Serveur injoignable" };
+  fsn.writeFileSync(CACHE, JSON.stringify(c5));
   global.netCalls = [];
   await load();
   ok("aucun appel pendant le backoff", global.netCalls.length === 0, JSON.stringify(global.netCalls));
