@@ -106,7 +106,7 @@
     padding: calc(5 * var(--u)) calc(6 * var(--u)) calc(5 * var(--u)) calc(10 * var(--u));
   }
   .card.live { background: var(--now-bg); border-color: var(--now); border-width: calc(2 * var(--u)); }
-  .card.done .bar, .card.done .times, .card.done .info .t, .card.done .info .s { opacity: 0.4; }
+  .card.done .times, .card.done .info .t, .card.done .info .s { opacity: 0.4; }
   .card .bar { width: calc(3 * var(--u)); border-radius: calc(1.5 * var(--u)); background: var(--accent); margin-right: calc(8 * var(--u)); }
   .card .times {
     width: calc(38 * var(--u)); display: flex; flex-direction: column; justify-content: space-between;
@@ -158,6 +158,7 @@
   .dense .h { font-size: calc(11 * var(--u)); color: var(--text); margin-right: calc(6 * var(--u)); }
   .dense .t { font-weight: 600; font-size: calc(11.5 * var(--u)); color: var(--text); white-space: nowrap; }
   .dense .r { margin-left: auto; font-size: calc(10 * var(--u)); color: var(--sub); white-space: nowrap; }
+  .dense.done .h, .dense.done .t, .dense.done .r { opacity: 0.4; }
   .dense .cancelled { margin-left: auto; font-weight: 600; font-size: calc(10 * var(--u)); color: var(--cancel); }
 
   /* prochain cours */
@@ -321,11 +322,18 @@
     const stack = el("div", "stack");
     stack.style.marginTop = px(8);
     stack.style.gap = px(5);
-    DAY.forEach(e => {
+    DAY.forEach((e, i) => {
+      // Pause déjeuner : espace supplémentaire entre le matin et l'après-midi
+      const prev = DAY[i - 1];
+      if (prev && mins(e.start) - mins(prev.end) >= 45 && +prev.end.slice(0, 2) >= 11 && +prev.end.slice(0, 2) <= 13) {
+        const gap = el("div");
+        gap.style.height = px(22);
+        stack.append(gap);
+      }
       const done = mins(e.end) <= NOW || e.cancelled;
       const live = !e.cancelled && mins(e.start) <= NOW && mins(e.end) > NOW;
       const card = el("div", "card" + (done ? " done" : "") + (live ? " live" : ""));
-      card.style.setProperty("--accent", color(e));
+      card.style.setProperty("--accent", done ? hexA(color(e), 0.35) : color(e));
       card.append(el("div", "bar bar-h44"));
       const times = el("div", "times times-h44");
       times.append(el("span", "", e.start), el("span", "", e.end));
@@ -500,7 +508,7 @@
       const card = el("div", "dense" + (done ? " done" : "") + (live ? " live" : ""));
       card.style.setProperty("--accent", color(e));
       if (live) { card.style.background = "var(--now-bg)"; card.style.borderColor = "var(--now)"; }
-      if (done) card.style.opacity = "0.4";
+      if (done) card.style.setProperty("--accent", hexA(color(e), 0.35));
       card.append(el("div", "bar"), el("span", "h", e.start), el("span", "t", title(e)));
       card.append(e.cancelled ? el("span", "cancelled", "Annulé") : el("span", "r", e.room));
       stack.append(card);
