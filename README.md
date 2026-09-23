@@ -1,2 +1,106 @@
 # cy-edt-widget
-Unofficial iOS widget (Scriptable) for the CY Tech / CYU CELCAT timetable
+
+Widget iOS **non officiel** (via [Scriptable](https://scriptable.app)) pour l'emploi du temps CELCAT de **CY Tech / CY Cergy Paris Université** (`celcat-calendar.cyu.fr`).
+
+Tes cours directement sur l'écran d'accueil : horaires, salles, type de cours, cours annulés, notifications de changement et synchronisation avec le calendrier iPhone.
+
+> Projet indépendant, sans aucun lien avec CY Tech / CYU. Tes identifiants restent sur ton iPhone.
+
+---
+
+## Fonctionnalités
+
+- **Vue du jour** — cours du jour (ou du prochain jour de cours), cartes sombres/claires avec bordure colorée par type : CM rouge, TD bleu, TP vert, examen orange.
+- **Mode live** (petit widget) — chaque cours disparaît 30 min après son début pour laisser la place au suivant et à sa salle.
+- **Vue semaine** — planning de la semaine sur un grand widget, avec possibilité d'afficher les semaines suivantes.
+- **Prochain cours** — seulement le cours suivant et sa salle ; c'est aussi l'affichage automatique sur l'écran verrouillé.
+- **Cours annulés** grisés au lieu d'être masqués.
+- **Notifications** si l'emploi du temps change (salle, horaire, annulation, ajout) sur les 7 prochains jours.
+- **Rappel** 10 min avant chaque cours, avec la salle.
+- **Synchronisation calendrier** dans un calendrier iPhone dédié (« Cours CY »).
+- **Mode clair / sombre** automatique.
+- **Cache hors ligne** : les données sont réutilisées si le réseau est indisponible, et aucun appel réseau n'est fait la nuit (22h → 7h).
+
+## Installation
+
+1. Installer **Scriptable** depuis l'App Store.
+2. Copier le contenu de [`celcat-widget.js`](celcat-widget.js).
+3. Dans Scriptable : `+` → coller le script → le nommer par ex. `EDT CY`.
+4. **Lancer le script une fois dans l'app** et choisir « Changer mes identifiants » :
+   - identifiant et mot de passe CY (ceux de `celcat-calendar.cyu.fr`) ;
+   - numéro étudiant = le nombre après `fid0=` dans l'URL de ton emploi du temps (tu peux coller l'URL entière, ou laisser vide pour tenter la détection automatique).
+   Tout est stocké dans le **Trousseau iOS**.
+5. Choisir « Tester les notifications » une fois, pour autoriser Scriptable à en envoyer.
+6. Ajouter un widget Scriptable sur l'écran d'accueil (taille **grande** conseillée), puis appui long → **Modifier le widget** → sélectionner le script.
+
+## Choix de la vue (paramètre du widget)
+
+Appui long sur le widget → **Modifier le widget** → champ `Parameter` :
+
+| Paramètre | Affichage |
+|---|---|
+| *(vide)* ou `0` | Jour actuel, ou prochain jour de cours |
+| `1`, `2`, `3`… | Jours de cours suivants (pratique pour une pile de widgets) |
+| `semaine` | Vue semaine (grand widget) |
+| `semaine 1` | Semaine suivante (`semaine 2`, etc.) |
+| `prochain` | Uniquement le prochain cours et sa salle |
+
+Sur l'**écran verrouillé**, le widget affiche toujours le prochain cours et sa salle, quel que soit le paramètre.
+
+## Réglages
+
+À modifier en haut de `celcat-widget.js` :
+
+| Constante | Défaut | Rôle |
+|---|---|---|
+| `DAYS_AHEAD` | `14` | Nombre de jours récupérés |
+| `FETCH_MIN` | `15` | Intervalle mini entre deux téléchargements (min) |
+| `NIGHT_START` / `NIGHT_END` | `22` / `7` | Plage sans appel réseau |
+| `HIDE_AFTER_MIN` | `30` | Mode live : délai avant qu'un cours disparaisse (min) |
+| `SHOW_COUNTDOWN` | `false` | Compte à rebours « dans 12:34 » avant un cours |
+| `LIVE_FAMILIES` | `["small"]` | Tailles en mode live (ajouter `"medium"` si besoin) |
+| `NOTIFY_CHANGES` | `true` | Notifier les changements d'emploi du temps |
+| `CHANGES_DAYS` | `7` | Fenêtre de détection des changements (jours) |
+| `REMIND_BEFORE_MIN` | `10` | Rappel avant chaque cours (`0` = désactivé) |
+| `SYNC_CALENDAR` | `true` | Copier les cours dans le calendrier iPhone |
+| `CALENDAR_NAME` | `"Cours CY"` | Nom du calendrier créé |
+| `THEME` | `"auto"` | `"auto"`, `"dark"` ou `"light"` |
+| `RENAME` | `{}` | Renommer une matière : `"I2GSIM07": "Statistiques"` |
+| `TYPE_COLORS` | — | Couleurs par type de cours (1re règle qui correspond) |
+
+## Menu du script (lancement dans l'app)
+
+Lancer le script depuis Scriptable ouvre un menu :
+
+- aperçus (grand / moyen / petit widget, vue semaine, prochain cours, écran verrouillé) ;
+- **Changer mes identifiants** ;
+- **Tester les notifications** (déclenche la demande d'autorisation iOS) ;
+- **Données brutes (debug)** : JSON des premiers cours, utile pour comprendre un affichage bizarre.
+
+## Fonctionnement
+
+1. Connexion via `POST /LdapLogin/Logon` (avec le jeton `__RequestVerificationToken` récupéré sur la page de login).
+2. Récupération des cours via `POST /Home/GetCalendarData` (`resType=104`, `federationIds[]=<numéro étudiant>`), du lundi de la semaine courante jusqu'à `DAYS_AHEAD` jours.
+3. Mise en cache dans `celcat_cache.json` (dossier Scriptable local), avec date de téléchargement et numéro étudiant.
+4. Affichage, puis, si de nouvelles données ont été téléchargées : diff avec l'ancien planning → notifications, replanification des rappels, mise à jour du calendrier.
+
+Le widget demande à iOS un rafraîchissement au prochain début/fin de cours, et au plus tard après `FETCH_MIN` minutes (iOS reste libre de décaler).
+
+## Problèmes courants
+
+| Symptôme | Piste |
+|---|---|
+| « Ouvre le script dans Scriptable pour te connecter. » | Lancer le script dans l'app et enregistrer les identifiants. |
+| Widget vide ou aucun cours | Numéro étudiant (`fid0`) absent ou erroné → le ressaisir via « Changer mes identifiants ». |
+| Une matière s'affiche avec son code | Ajouter une entrée dans `RENAME`. |
+| Pas de notifications | Lancer « Tester les notifications » une fois et autoriser Scriptable dans Réglages iOS. |
+| Données qui semblent figées | Normal la nuit (22h → 7h) et pendant `FETCH_MIN` minutes ; ouvrir le script force la mise à jour. |
+| Affichage inattendu | « Données brutes (debug) » pour inspecter ce que renvoie CELCAT. |
+
+## Vie privée
+
+Identifiants et numéro étudiant sont stockés dans le **Trousseau iOS**. Les cours sont mis en cache localement dans le dossier Scriptable. Le script ne communique qu'avec `celcat-calendar.cyu.fr` — aucun serveur tiers, aucune télémétrie.
+
+## Licence
+
+[MIT](LICENSE) — © 2026 Sam Procoppe.
