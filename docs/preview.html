@@ -227,6 +227,12 @@
   footer { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--page-line); color: var(--page-sub); font-size: 14px; }
   footer a { color: inherit; }
 
+  /* Mode capture : ?shot=light|dark|lock — un seul panneau, plein cadre, pour les PNG du README */
+  body.shot { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  body.shot .wrap { max-width: none; padding: 0; }
+  body.shot .intro, body.shot .panel-title, body.shot footer { display: none; }
+  body.shot .panel { border-radius: 0; padding: 48px 44px; overflow: visible; background: none; }
+
   @media (max-width: 1500px) { :root { --u: 1.5px; } }
   @media (max-width: 760px) { :root { --u: 1.1px; } .panel { padding: 22px 18px; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
@@ -239,10 +245,10 @@
     <p>Emploi du temps fictif : cours, salles et enseignants inventés.</p>
   </header>
 
-  <div class="panel-title"><h2>Mode clair</h2><span>jeudi 24 septembre, 13:40</span></div>
+  <div class="panel-title"><h2>Mode clair</h2><span>jeudi 24 septembre, 12:20 — un cours en vert « en cours »</span></div>
   <section class="panel light" id="panel-light"></section>
 
-  <div class="panel-title"><h2>Mode sombre</h2><span>les mêmes widgets, thème sombre de l'iPhone</span></div>
+  <div class="panel-title"><h2>Mode sombre</h2><span>13:40, entre deux cours — trait rouge sur l'heure courante</span></div>
   <section class="panel dark" id="panel-dark"></section>
 
   <div class="panel-title"><h2>Écran verrouillé</h2><span>bandeau au-dessus de l'heure, rectangle et rond</span></div>
@@ -258,7 +264,7 @@
   const TYPE = { CM: "#FF3B30", TD: "#0A84FF", TP: "#34C759", Examen: "#FF9500" };
 
   // Jeudi 24 septembre, il est 13:40 : Anglais vient de finir, Statistiques arrive.
-  const NOW = 13 * 60 + 40;
+  let NOW = 12 * 60 + 20;          // heure simulée, fixée par panneau
   const DAY = [
     { cat: "TD", mod: "Économie",      start: "08:30", end: "10:00", staff: "DUBOIS PAUL", room: "FER FT202" },
     { cat: "CM", mod: "Test logiciel", start: "10:15", end: "11:45", staff: "", room: "", cancelled: true },
@@ -354,7 +360,7 @@
 
   // ---------- vue journée avec férié (grand widget) ----------
   function buildHoliday(scope) {
-    const w = widget(scope, "large");
+    const w = widget(scope, "medium");
     const head = el("div", "head");
     head.append(el("span", "label", "Mercredi 23 septembre"));
     w.append(head);
@@ -528,7 +534,8 @@
     return t;
   }
 
-  function buildPanel(id, scope) {
+  function buildPanel(id, scope, nowMin) {
+    NOW = nowMin;                    // les vues se calculent par rapport à cette heure
     const panel = document.getElementById(id);
     const row = el("div", "row");
     row.append(tile(buildDay(scope), "Journée"));
@@ -544,8 +551,11 @@
     panel.append(row2);
   }
 
-  buildPanel("panel-light", "light");
-  buildPanel("panel-dark", "dark");
+  // ?shot=<panneau> : on ne garde que celui-là, pour la capture
+  const shot = new URLSearchParams(location.search).get("shot");
+
+  buildPanel("panel-light", "light", 12 * 60 + 20);   // pendant l'anglais : cartes "en cours"
+  buildPanel("panel-dark", "dark", 13 * 60 + 40);     // entre deux cours : trait rouge dans la semaine
 
   // écran verrouillé
   const lock = document.getElementById("panel-lock");
@@ -560,4 +570,16 @@
   row.append(rect, circ);
   ls.append(row);
   lock.append(ls);
+
+  if (shot) {
+    const keep = document.getElementById("panel-" + shot);
+    if (keep) {
+      // le fond du panneau devient celui de la page : capturé avant de basculer en mode capture
+      const bg = getComputedStyle(keep);
+      const fill = bg.backgroundImage !== "none" ? bg.backgroundImage : bg.backgroundColor;
+      document.body.classList.add("shot");
+      document.querySelectorAll(".panel").forEach(p => { if (p !== keep) p.remove(); });
+      document.body.style.background = fill;
+    }
+  }
 </script>
