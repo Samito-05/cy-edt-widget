@@ -52,6 +52,7 @@ const STYLE = {
   sub:    dyn("#3C3C43", "#D4D4DA"),
   muted:  dyn("#8A8A8E", "#8E8E96"),
   now:    dyn("#1E9E47", "#34C759"),   // cours en cours
+  nowLine: dyn("#FF3B30", "#FF453A"),  // trait "maintenant" (vue semaine)
   nowBg:  dyn("#E3F5E8", "#182A1F"),
   cancel: dyn("#D95A00", "#FF9F0A"),   // cours annulé
   todayCol: dyn("#000000", "#FFFFFF", 0.05),
@@ -65,11 +66,12 @@ const RENAME = {
   // "I2GSIM07": "Statistiques",
 };
 
-// Couleur selon le type de cours (1re règle qui correspond)
+// Couleur selon le type de cours (1re règle qui correspond).
+// Teintes système iOS : elles restent lisibles sur fond clair comme sur fond sombre.
 const TYPE_COLORS = [
-  { re: /^CM\b|magistral/i,                                color: "#FF1A1A" }, // rouge
-  { re: /^TD\b|dirig/i,                                    color: "#4B4BFF" }, // bleu
-  { re: /^TP\b|pratique/i,                                 color: "#22C55E" }, // vert
+  { re: /^CM\b|magistral/i,                                color: "#FF3B30" }, // rouge
+  { re: /^TD\b|dirig/i,                                    color: "#0A84FF" }, // bleu
+  { re: /^TP\b|pratique/i,                                 color: "#34C759" }, // vert
   { re: /exam|partiel|\bDS\b|contr[oô]le|soutenance/i,     color: "#FF9500" }, // orange
 ];
 
@@ -376,15 +378,19 @@ function parse(e, frequent) {
   module = module.replace(new RegExp(`^${esc}\\s*[-:]\\s*`), "");
 
   const type = TYPE_COLORS.find(t => t.re.test(category));
+  const start = new Date(e.start);
+  const end = e.end ? new Date(e.end) : new Date(start.getTime() + 3600000);
+  // Journée entière (férié, vacances, journée d'intégration…) : pas d'horaire à afficher,
+  // et surtout pas de rappel « dans 10 min » à minuit.
+  const allDay = e.allDay === true || !e.end || (+end - +start) >= 20 * 3600000;
   return {
     key: e.id != null ? String(e.id) : `${e.start}|${module}`,   // identifiant stable du cours
-    start: new Date(e.start),
-    end: new Date(e.end),
+    start, end, allDay,
     title: module ? (category ? `${category} - ${module}` : module) : (category || "Cours"),
     module: module || category || "Cours", category,
     staff, room,
     cancelled: isCancelled(category, lines),
-    color: type ? type.color : (e.backgroundColor || "#4B4BFF"),
+    color: type ? type.color : (e.backgroundColor || "#0A84FF"),
   };
 }
 
@@ -396,6 +402,26 @@ function isCancelled(category, lines) {
 const parseAll = data => { const f = frequentLines(data); return data.map(e => parse(e, f)); };
 
 // ---------- carte de cours ----------
+// Bandeau fin pour un événement "journée entière" (férié, vacances, journée d'intégration…)
+function addAllDayBanner(w, e, fam) {
+  const color = new Color(e.color, 1);
+  const b = w.addStack();
+  b.layoutHorizontally();
+  b.centerAlignContent();
+  b.backgroundColor = new Color(e.color, 0.16);
+  b.cornerRadius = 7;
+  b.setPadding(4, 8, 4, 8);
+  const t = b.addText(e.title);
+  t.font = STYLE.bold(fam === "small" ? 10 : 11);
+  t.textColor = color;
+  t.lineLimit = 1; t.minimumScaleFactor = 0.7;
+  b.addSpacer();
+  const d = b.addText("journée");
+  d.font = STYLE.font(fam === "small" ? 9 : 10);
+  d.textColor = STYLE.muted;
+  d.lineLimit = 1;
+}
+
 function addCard(w, e, mode, now) {
   const done = e.end <= now || e.cancelled;
   const live = !e.cancelled && e.start <= now && e.end > now;
@@ -413,7 +439,7 @@ function addCard(w, e, mode, now) {
   card.setPadding(5, 6, 5, mode === "mini" ? 6 : 10);
   const titleColor = live ? STYLE.now : STYLE.text;
 
-  const h = { full: 44, compact: 30, mini: 28 }[mode];
+  const h = { full: 44, compact: 30, dense: 22, mini: 28 }[mode];
   const bar = card.addStack();
   bar.size = new Size(3, h);
   bar.backgroundColor = accent;
@@ -435,6 +461,17 @@ function addCard(w, e, mode, now) {
     if (e.cancelled) txt(col, `Annulé · ${hm(e.start)}–${hm(e.end)}`, STYLE.bold(10), STYLE.cancel, 1);
     else txt(col, [`${hm(e.start)}–${hm(e.end)}`, e.room].filter(Boolean).join(" · "), STYLE.font(10), STYLE.sub);
     card.addSpacer();
+    return;
+  }
+
+  // Widget moyen à 3 cours : tout sur une ligne — heure, matière, puis salle à droite
+  if (mode === "dense") {
+    txt(card, hm(e.start), STYLE.font(11), STYLE.text);
+    card.addSpacer(6);
+    txt(card, e.title, STYLE.bold(11.5), titleColor).minimumScaleFactor = 0.6;
+    card.addSpacer();
+    if (e.cancelled) txt(card, "Annulé", STYLE.bold(10), STYLE.cancel, 1);
+    else if (e.room) txt(card, e.room, STYLE.font(10), STYLE.sub);
     return;
   }
 
@@ -534,16 +571,18 @@ function buildWidget(events, fam, stale, error, offset = 0) {
   const visible = e => e.end > now && (!live || hideAt(e) > now);
 
   // Aujourd'hui s'il reste des cours (non annulés), sinon le prochain jour avec cours
-  const nextEvent = sorted.find(e => visible(e) && !e.cancelled);
+  const nextEvent = sorted.find(e => !e.allDay && visible(e) && !e.cancelled);
   let targetDay = nextEvent ? ymd(nextEvent.start) : ymd(now);
   // Paramètre "1", "2"… : Nᵉ jour de cours suivant (pour naviguer dans une pile de widgets)
   if (offset > 0) {
-    const days = [...new Set(sorted.filter(e => !e.cancelled).map(e => ymd(e.start)))].filter(d => d > targetDay);
+    const days = [...new Set(sorted.filter(e => !e.cancelled && !e.allDay).map(e => ymd(e.start)))].filter(d => d > targetDay);
     targetDay = days[offset - 1] || null;
   }
-  const dayEvents = targetDay ? sorted.filter(e => ymd(e.start) === targetDay) : [];
+  const onTarget = targetDay ? sorted.filter(e => ymd(e.start) === targetDay) : [];
+  const allDayEvents = onTarget.filter(e => e.allDay && !e.cancelled);
+  const dayEvents = onTarget.filter(e => !e.allDay);
 
-  const max = { small: 2, medium: 2, large: 6, extraLarge: 8 }[fam] ?? 6;
+  const max = { small: 2, medium: 3, large: 6, extraLarge: 8 }[fam] ?? 6;
   let shown;
   if (live) {
     shown = dayEvents.filter(visible).slice(0, max);
@@ -555,8 +594,10 @@ function buildWidget(events, fam, stale, error, offset = 0) {
     }
     shown = dayEvents.slice(from, from + max);
   }
+  // "dense" : widget moyen à 3 cours — une seule ligne par cours, sinon ça ne rentre pas
   const mode = live ? "live" : fam === "small" ? "mini"
-             : (fam === "medium" || shown.length >= 5) ? "compact" : "full";
+             : fam === "medium" ? (shown.length >= 3 ? "dense" : "compact")
+             : shown.length >= 5 ? "compact" : "full";
   const big = fam === "large" || fam === "extraLarge";
 
   const w = new ListWidget();
@@ -595,6 +636,12 @@ function buildWidget(events, fam, stale, error, offset = 0) {
     c.font = STYLE.font(11); c.textColor = STYLE.muted;
   }
   w.addSpacer(live ? 6 : 8);
+
+  // Journées entières (férié, vacances…) : un bandeau, pas une carte de cours
+  allDayEvents.slice(0, 2).forEach(e => {
+    addAllDayBanner(w, e, fam);
+    w.addSpacer(live ? 4 : 5);
+  });
 
   // Cours
   if (!shown.length) {
@@ -639,6 +686,30 @@ function largeWidgetSize() {
   return new Size(292, 311);
 }
 
+// Filets horizontaux (une ligne par heure) dessinés en image de fond de la grille :
+// un Stack ne peut pas superposer deux contenus, le fond est le seul moyen de les faire
+// passer DERRIÈRE les cours. Gris neutre : lisible en clair comme en sombre.
+function hourLines(width, height, startMin, endMin, scale) {
+  const ctx = new DrawContext();
+  ctx.size = new Size(width, height);
+  ctx.opaque = false;
+  ctx.respectScreenScale = true;
+  ctx.setFillColor(new Color("#808080", 0.22));
+  for (let m = startMin + 60; m < endMin; m += 60) {
+    ctx.fillRect(new Rect(0, Math.round((m - startMin) * scale), width, 0.5));
+  }
+  return ctx.getImage();
+}
+
+// Trait "maintenant" : seulement s'il tombe dans un trou de l'emploi du temps —
+// pendant un cours, la carte verte "en cours" dit déjà où on en est.
+function addNowLine(col, width) {
+  const l = col.addStack();
+  l.size = new Size(width, 1.5);
+  l.backgroundColor = STYLE.nowLine;
+  l.cornerRadius = 0.75;
+}
+
 function addWeekBlock(col, e, width, height, now) {
   const done = e.end <= now || e.cancelled;
   const live = !e.cancelled && e.start <= now && e.end > now;
@@ -673,9 +744,12 @@ function buildWeekWidget(events, stale, error, weekOffset = 0) {
 
   // Semaine en cours, ou la suivante s'il ne reste plus de cours cette semaine
   let monday = mondayOf(now);
-  if (!sorted.some(e => !e.cancelled && e.end > now && e.start < plus7(monday))) monday = plus7(monday);
+  if (!sorted.some(e => !e.cancelled && !e.allDay && e.end > now && e.start < plus7(monday))) monday = plus7(monday);
   for (let i = 0; i < weekOffset; i++) monday = plus7(monday);
-  const weekEvents = sorted.filter(e => e.start >= monday && e.start < plus7(monday));
+  const inWeek = sorted.filter(e => e.start >= monday && e.start < plus7(monday));
+  const weekEvents = inWeek.filter(e => !e.allDay);          // la grille n'affiche que les cours horodatés
+  const allDayByDay = new Map();                             // jour → événement journée entière (férié…)
+  inWeek.filter(e => e.allDay && !e.cancelled).forEach(e => allDayByDay.set(ymd(e.start), e));
 
   // Lun → ven (+ sam/dim s'il y a cours)
   const nDays = weekEvents.some(e => e.start.getDay() === 0) ? 7
@@ -720,14 +794,17 @@ function buildWeekWidget(events, stale, error, weekOffset = 0) {
   days.forEach(d => {
     dh.addSpacer(gap);
     const isToday = ymd(d) === ymd(now);
+    const off = allDayByDay.get(ymd(d));     // férié / vacances : la colonne est teintée
     const c = dh.addStack();
     c.size = new Size(colW, dayH);
     c.centerAlignContent();
     if (isToday) { c.backgroundColor = STYLE.text; c.cornerRadius = 4; }
+    else if (off) { c.backgroundColor = new Color(off.color, 0.16); c.cornerRadius = 4; }
     c.addSpacer();
     const t = c.addText(`${cap(fmtDate(d, "EEE").replace(".", ""))} ${d.getDate()}`);
-    t.font = isToday ? STYLE.bold(9) : STYLE.font(9);
-    t.textColor = isToday ? STYLE.bg : (d < mondayOf(now) || (ymd(d) < ymd(now)) ? STYLE.muted : STYLE.sub);
+    t.font = isToday || off ? STYLE.bold(9) : STYLE.font(9);
+    t.textColor = isToday ? STYLE.bg : off ? new Color(off.color, 1)
+                : (d < mondayOf(now) || (ymd(d) < ymd(now)) ? STYLE.muted : STYLE.sub);
     t.lineLimit = 1; t.minimumScaleFactor = 0.8;
     c.addSpacer();
   });
@@ -737,6 +814,7 @@ function buildWeekWidget(events, stale, error, weekOffset = 0) {
   const grid = w.addStack();
   grid.layoutHorizontally();
   grid.topAlignContent();
+  try { grid.backgroundImage = hourLines(innerW, gridH, startMin, endMin, scale); } catch (err) {}
 
   const axis = grid.addStack();
   axis.layoutVertically();
@@ -757,17 +835,41 @@ function buildWeekWidget(events, stale, error, weekOffset = 0) {
     col.size = new Size(colW, gridH);
     if (ymd(d) === ymd(now)) { col.backgroundColor = STYLE.todayCol; col.cornerRadius = 5; }
 
-    let cursor = 0;
+    // Position du trait "maintenant" dans cette colonne (aujourd'hui uniquement)
+    const nowY = ymd(d) === ymd(now) && mins(now) >= startMin && mins(now) < endMin
+               ? Math.round((mins(now) - startMin) * scale) : -1;
+    let cursor = 0, nowDrawn = false;
+    // Insère le trait s'il tombe dans l'espace libre qu'on s'apprête à ajouter
+    const spacerTo = y => {
+      if (y <= cursor) return;
+      if (nowY >= cursor && nowY < y - 1.5 && !nowDrawn) {
+        if (nowY > cursor) col.addSpacer(nowY - cursor);
+        addNowLine(col, colW);
+        nowDrawn = true;
+        col.addSpacer(y - nowY - 1.5);
+      } else {
+        col.addSpacer(y - cursor);
+      }
+      cursor = y;
+    };
+
     weekEvents.filter(e => ymd(e.start) === ymd(d)).forEach(e => {
       const top = Math.round((mins(e.start) - startMin) * scale);
       const bottom = Math.round((mins(e.end) - startMin) * scale);
       const y = Math.max(top, cursor);
-      if (y > cursor) col.addSpacer(y - cursor);
+      spacerTo(y);
       const h = Math.min(Math.max(10, bottom - y), gridH - y);   // jamais plus bas que la grille
       if (h <= 0) return;
       addWeekBlock(col, e, colW, h, now);
       cursor = y + h;
     });
+    // Plus aucun cours après l'heure actuelle : le trait va après la dernière carte
+    if (nowY >= cursor && !nowDrawn && nowY < gridH - 1.5) {
+      if (nowY > cursor) col.addSpacer(nowY - cursor);
+      addNowLine(col, colW);
+      nowDrawn = true;
+      cursor = nowY + 1.5;
+    }
     // Espace restant EXACT (un spacer flexible a une taille mini sous iOS : quand les cours
     // vont jusqu'en bas, la colonne déborde et iOS la recentre → tout remonte de quelques points)
     if (gridH - cursor > 0) col.addSpacer(gridH - cursor);
@@ -788,6 +890,7 @@ function buildWeekWidget(events, stale, error, weekOffset = 0) {
 // ---------- changements, rappels, calendrier ----------
 const NOTIFIED = fm.joinPath(fm.documentsDirectory(), "celcat_notified.json");
 const REMIND_PREFIX = "celcat-rappel|";
+const MAX_REMINDERS = 30;        // iOS n'accepte que 64 notifications en attente pour toute l'app Scriptable
 const whenStr = d => `${cap(fmtDate(d, "EEE d").replace(".", ""))} ${hm(d)}`;   // "Jeu 24 13:00"
 const dayUrl = d => `${BASE}/cal?vt=agendaDay&dt=${ymd(d)}&et=student&fid0=${FID}`;
 
@@ -855,12 +958,14 @@ async function scheduleReminders(events) {
   const now = Date.now(), horizon = now + 5 * 86400000;
   const wanted = new Map();
   if (REMIND_BEFORE_MIN > 0) {
-    for (const e of events) {
-      const at = e.start.getTime() - REMIND_BEFORE_MIN * 60000;
-      if (e.cancelled || at <= now || at > horizon) continue;
-      // la salle fait partie de l'identifiant → un changement de salle remplace le rappel
-      wanted.set(`${REMIND_PREFIX}${e.key}|${e.start.getTime()}|${e.room}`, { e, at });
-    }
+    const due = events
+      .filter(e => !e.cancelled && !e.allDay)
+      .map(e => ({ e, at: e.start.getTime() - REMIND_BEFORE_MIN * 60000 }))
+      .filter(({ at }) => at > now && at <= horizon)
+      .sort((a, b) => a.at - b.at)
+      .slice(0, MAX_REMINDERS);   // iOS limite les notifications en attente, partagées avec les autres scripts
+    // la salle fait partie de l'identifiant → un changement de salle remplace le rappel
+    for (const { e, at } of due) wanted.set(`${REMIND_PREFIX}${e.key}|${e.start.getTime()}|${e.room}`, { e, at });
   }
   const obsolete = ours.filter(id => !wanted.has(id));
   if (obsolete.length) await Notification.removePending(obsolete);
@@ -883,7 +988,12 @@ async function scheduleReminders(events) {
 async function syncCalendar(events, from, to) {
   let cal;
   try { cal = await Calendar.forEventsByTitle(CALENDAR_NAME); }
-  catch (e) { cal = await Calendar.createForEvents(CALENDAR_NAME); }
+  catch (e) {
+    // Créer le calendrier demande l'accès à l'app Calendrier : impossible depuis un widget,
+    // qui resterait bloqué sur la demande. Le premier lancement dans Scriptable s'en charge.
+    if (config.runsInWidget) return;
+    cal = await Calendar.createForEvents(CALENDAR_NAME);
+  }
 
   const existing = await CalendarEvent.between(from, to, [cal]);
   const byKey = new Map();
@@ -905,9 +1015,11 @@ async function syncCalendar(events, from, to) {
     let ev = byKey.get(e.key);
     byKey.delete(e.key);
     if (ev && ev.title === title && +ev.startDate === +e.start && +ev.endDate === +e.end &&
+        !!ev.isAllDayEvent === !!e.allDay &&
         (ev.location || "") === (e.room || "") && (ev.notes || "") === notes) continue;   // inchangé
     if (!ev) { ev = new CalendarEvent(); ev.calendar = cal; }
     ev.title = title;
+    ev.isAllDayEvent = !!e.allDay;
     ev.startDate = e.start;
     ev.endDate = e.end;
     ev.location = e.room || "";
@@ -939,7 +1051,7 @@ async function afterFetch(res, events) {
 function nextClass(events, now) {
   const hideAt = e => e.start.getTime() + HIDE_AFTER_MIN * 60000;
   return events.slice().sort((a, b) => a.start - b.start)
-               .find(e => !e.cancelled && e.end > now && hideAt(e) > now);
+               .find(e => !e.cancelled && !e.allDay && e.end > now && hideAt(e) > now);
 }
 
 // "FER FT202" → "FT202" (pour le petit rond de l'écran verrouillé)
