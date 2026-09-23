@@ -12,9 +12,9 @@ Tes cours directement sur l'écran d'accueil : horaires, salles, type de cours, 
 
 - **Vue du jour** — cours du jour (ou du prochain jour de cours), cartes sombres/claires avec bordure colorée par type : CM rouge, TD bleu, TP vert, examen orange.
 - **Mode live** (petit widget) — chaque cours disparaît 30 min après son début pour laisser la place au suivant et à sa salle.
-- **Vue semaine** — planning de la semaine sur un grand widget, avec possibilité d'afficher les semaines suivantes.
+- **Vue semaine** — planning de la semaine sur un grand widget (filets d'heures, trait rouge sur l'heure courante), avec possibilité d'afficher les semaines suivantes.
 - **Prochain cours** — seulement le cours suivant et sa salle ; c'est aussi l'affichage automatique sur l'écran verrouillé.
-- **Cours annulés** grisés au lieu d'être masqués.
+- **Cours annulés** grisés au lieu d'être masqués ; **fériés et vacances** affichés en bandeau, sans horaire ni rappel.
 - **Notifications** si l'emploi du temps change (salle, horaire, annulation, ajout) sur les 7 prochains jours.
 - **Rappel** 10 min avant chaque cours, avec la salle.
 - **Synchronisation calendrier** dans un calendrier iPhone dédié (« Cours CY »).
@@ -101,6 +101,16 @@ Le widget demande à iOS un rafraîchissement au prochain début/fin de cours, e
 ## Vie privée
 
 Identifiants et numéro étudiant sont stockés dans le **Trousseau iOS**. Les cours sont mis en cache localement dans le dossier Scriptable. Le script ne communique qu'avec `celcat-calendar.cyu.fr` — aucun serveur tiers, aucune télémétrie.
+
+## Tests
+
+Le script tourne dans un faux environnement Scriptable (stubs `Request`, `Keychain`, `FileManager`, `Notification`, `Calendar`, `ListWidget`, `DrawContext`…) et les scénarios vérifient le téléchargement, le cache, le backoff, les notifications de changement, la synchro calendrier et le rendu de chaque taille de widget.
+
+```sh
+node test/widget.test.js
+```
+
+Node ≥ 18, aucune dépendance.
 
 ## Licence
 
