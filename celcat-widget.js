@@ -153,28 +153,44 @@ function detectFid(...texts) {
 }
 
 // ---------- réseau ----------
+// iOS ne laisse qu'une poignée de secondes à un widget : mieux vaut abandonner
+// et afficher les données en mémoire que de se faire tuer en plein chargement.
+const NET_TIMEOUT = 10;          // secondes
+
+function request(url) {
+  const r = new Request(url);
+  r.timeoutInterval = NET_TIMEOUT;
+  return r;
+}
+
 async function login() {
   if (!Keychain.contains(KC_USER) || !Keychain.contains(KC_PASS)) {
     if (config.runsInWidget) throw new Error("Ouvre le script dans Scriptable pour te connecter.");
     if (!(await askCredentials())) throw new Error("Connexion annulée.");
   }
-  const page = await new Request(BASE + "/LdapLogin").loadString();
+  const page = await request(BASE + "/LdapLogin").loadString();
   const m = page.match(/__RequestVerificationToken[^>]*value="([^"]+)"/);
   if (!m) return; // pas de formulaire → pas de connexion nécessaire
 
-  const r = new Request(BASE + "/LdapLogin/Logon");
+  const r = request(BASE + "/LdapLogin/Logon");
   r.method = "POST";
   r.headers = { "Content-Type": "application/x-www-form-urlencoded" };
   r.body = `Name=${enc(Keychain.get(KC_USER))}&Password=${enc(Keychain.get(KC_PASS))}` +
            `&__RequestVerificationToken=${enc(m[1])}`;
   const html = await r.loadString();
+  // Identifiants refusés : CELCAT réaffiche le formulaire au lieu de rediriger vers l'agenda
+  if (/name="Password"/i.test(html) && /__RequestVerificationToken/.test(html)) {
+    const err = new Error("Identifiants refusés : ouvre le script → « Changer mes identifiants ».");
+    err.badCredentials = true;
+    throw err;
+  }
   if (!FID) detectFid(r.response && r.response.url, html);   // après connexion, CELCAT redirige souvent vers …&fid0=…
 }
 
 // Détection auto du numéro étudiant (si non saisi)
 async function findFid() {
   for (const path of ["/cal", "/"]) {
-    const r = new Request(BASE + path);
+    const r = request(BASE + path);
     const html = await r.loadString().catch(() => "");
     const id = detectFid(r.response && r.response.url, html);
     if (id) return id;
@@ -198,7 +214,7 @@ function fetchWindow() {
 
 async function fetchEvents() {
   const { start, end } = fetchWindow();                    // depuis lundi (pour la vue semaine)
-  const r = new Request(BASE + "/Home/GetCalendarData");
+  const r = request(BASE + "/Home/GetCalendarData");
   r.method = "POST";
   r.headers = {
     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -211,13 +227,29 @@ async function fetchEvents() {
   return JSON.parse(txt);
 }
 
+const CACHE_V = 2;               // incrémenter si le format du cache change → l'ancien est ignoré
+
 function readCache() {
   try {
     if (!fm.fileExists(CACHE)) return null;
     const c = JSON.parse(fm.readString(CACHE));
+    if (c.v !== CACHE_V) return null;  // écrit par une version plus ancienne du script
     return c.fid === FID ? c : null;   // cache d'un autre numéro étudiant → ignoré
   } catch (e) { return null; }
 }
+
+// Écriture en deux temps : une interruption d'iOS ne laisse jamais un JSON tronqué
+function writeCache(obj) {
+  const tmp = CACHE + ".tmp";
+  fm.writeString(tmp, JSON.stringify({ ...obj, v: CACHE_V }));
+  if (fm.fileExists(CACHE)) fm.remove(CACHE);
+  fm.move(tmp, CACHE);
+}
+
+// Échecs répétés (mot de passe changé, serveur HS…) : on espace les tentatives au lieu
+// de rappeler CELCAT toutes les FETCH_MIN minutes, pour chaque widget installé.
+const FAIL_BACKOFF_MIN = [15, 60, 180, 360];
+const backoffMs = f => FAIL_BACKOFF_MIN[Math.min(f.count, FAIL_BACKOFF_MIN.length - 1)] * 60000;
 
 const isNight = (d = new Date()) => d.getHours() >= NIGHT_START || d.getHours() < NIGHT_END;
 
@@ -246,6 +278,11 @@ async function getEvents(force = false) {
   const fresh = cached && Date.now() - cached.at < (FETCH_MIN - 1) * 60000;
   if (cached && FID && !force && (fresh || isNight())) return { data: cached.data, stale: false, fetched: false };
 
+  // Tentative précédente en échec : on patiente (ouvrir le script dans l'app réessaie tout de suite)
+  const fail = cached && cached.fail;
+  if (fail && !force && Date.now() - fail.at < backoffMs(fail))
+    return { data: cached.data, stale: true, error: fail.msg, fetched: false };
+
   try {
     let data = FID ? await fetchEvents() : null;
     if (!data) {
@@ -263,11 +300,16 @@ async function getEvents(force = false) {
     if (!data.length && cached && cached.data.filter(e => new Date(e.start) > new Date()).length >= 4)
       throw new Error("Réponse vide du serveur");
     const until = fetchWindow().end.getTime();
-    fm.writeString(CACHE, JSON.stringify({ at: Date.now(), fid: FID, until, data }));
+    writeCache({ at: Date.now(), fid: FID, until, data });   // succès → l'historique d'échecs est effacé
     // "prev" = version précédente, pour détecter les changements
     return { data, stale: false, fetched: true, until,
              prev: cached ? cached.data : null, prevUntil: cached ? cached.until : null };
   } catch (e) {
+    // Mot de passe refusé : on attend plus longtemps dès le premier échec
+    if (cached) {
+      const count = fail ? fail.count + 1 : (e.badCredentials ? 1 : 0);
+      try { writeCache({ ...cached, fail: { at: Date.now(), count, msg: e.message } }); } catch (err) {}
+    }
     if (!e.fatal && cached) return { data: cached.data, stale: true, error: e.message, fetched: false };
     throw e;
   }
@@ -749,14 +791,14 @@ const REMIND_PREFIX = "celcat-rappel|";
 const whenStr = d => `${cap(fmtDate(d, "EEE d").replace(".", ""))} ${hm(d)}`;   // "Jeu 24 13:00"
 const dayUrl = d => `${BASE}/cal?vt=agendaDay&dt=${ymd(d)}&et=student&fid0=${FID}`;
 
-// Compare deux téléchargements → liste de changements lisibles
-function diffSchedules(prevRaw, nextRaw, prevUntil, nextUntil) {
+// Compare l'ancien téléchargement (brut) au nouveau (déjà analysé) → changements lisibles
+function diffSchedules(prevRaw, nextEvents, prevUntil, nextUntil) {
   const now = new Date();
   // On ne compare que ce que les deux versions couvrent, dans les CHANGES_DAYS prochains jours
   const limit = Math.min(now.getTime() + CHANGES_DAYS * 86400000, prevUntil || Infinity, nextUntil || Infinity);
   const inScope = e => e && e.start > now && e.start.getTime() < limit;
   const P = new Map(parseAll(prevRaw).map(e => [e.key, e]));
-  const N = new Map(parseAll(nextRaw).map(e => [e.key, e]));
+  const N = new Map(nextEvents.map(e => [e.key, e]));
   const changes = [], removed = [], added = [];
 
   for (const [k, p] of P) {
@@ -847,8 +889,8 @@ async function syncCalendar(events, from, to) {
   const byKey = new Map();
   for (const ev of existing) {
     const m = (ev.notes || "").match(/\[celcat:([^\]]+)\]/);
-    if (!m) continue;                                  // ajouté à la main : on n'y touche pas
-    if (byKey.has(m[1])) { ev.remove(); continue; }    // doublon
+    if (!m) continue;                                      // ajouté à la main : on n'y touche pas
+    if (byKey.has(m[1])) { await ev.remove(); continue; }  // doublon
     byKey.set(m[1], ev);
   }
 
@@ -871,9 +913,9 @@ async function syncCalendar(events, from, to) {
     ev.location = e.room || "";
     ev.notes = notes;
     try { ev.availability = e.cancelled ? "free" : "busy"; } catch (err) {}
-    ev.save();
+    await ev.save();      // sans await, Script.complete() peut couper avant l'enregistrement
   }
-  for (const ev of byKey.values()) ev.remove();       // n'existe plus dans CELCAT
+  for (const ev of byKey.values()) await ev.remove();  // n'existe plus dans CELCAT
 }
 
 // Après chaque téléchargement : changements, rappels, calendrier (chacun isolé : une erreur
@@ -881,7 +923,7 @@ async function syncCalendar(events, from, to) {
 async function afterFetch(res, events) {
   const suspicious = !res.data.length && res.prev && res.prev.length >= 4;   // réponse vide anormale
   if (NOTIFY_CHANGES && res.prev && res.prev.length && !suspicious) {
-    try { await notifyChanges(diffSchedules(res.prev, res.data, res.prevUntil, res.until)); }
+    try { await notifyChanges(diffSchedules(res.prev, events, res.prevUntil, res.until)); }
     catch (e) { console.log("Notifications : " + e); }
   }
   if (!suspicious) {
