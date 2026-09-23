@@ -195,34 +195,70 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
   ok("notif changement de salle", /FT202.*FT999/.test(bodies), bodies);
   ok("notif annulation", /annulé/.test(bodies), bodies);
 
-  // --- 4. identifiants refusés → backoff
+  // --- 4. identifiants refusés → arrêt dès le 1er refus (pas de verrouillage du compte)
   console.log("\n[4] identifiants refusés");
+  const logons = () => global.netCalls.filter(c => c.url.includes("/LdapLogin/Logon")).length;
   const c4 = readCacheFile(); c4.at = 0; fsn.writeFileSync(CACHE, JSON.stringify(c4));
   NET = { "/Home/GetCalendarData": "<html>login</html>", "/LdapLogin": LOGIN_FORM };
   global.netCalls = [];
   await load();
   const c4b = readCacheFile();
-  ok("échec mémorisé", !!c4b.fail, JSON.stringify(c4b.fail));
-  ok("message identifiants", /Identifiants refusés/.test(c4b.fail && c4b.fail.msg || ""), JSON.stringify(c4b.fail));
-  ok("compteur démarre à 1 (backoff 1h)", c4b.fail && c4b.fail.count === 1, JSON.stringify(c4b.fail));
+  ok("une seule tentative de mot de passe", logons() === 1, JSON.stringify(global.netCalls));
+  ok("refus mémorisé dans le Trousseau", Keychain.contains("celcat_bad_creds"));
+  ok("échec mémorisé", !!(c4b.fail && c4b.fail.badCredentials), JSON.stringify(c4b.fail));
+  ok("message mot de passe", /Mot de passe refusé/.test(c4b.fail && c4b.fail.msg || ""), JSON.stringify(c4b.fail));
   ok("données conservées", c4b.data.length === 5);
+  ok("cours déjà chargés affichés", global.texts().some(t => /Statistiques|Anglais|Réseaux|Maths/.test(t)),
+     JSON.stringify(global.texts()));
+  ok("en-tête « mot de passe ? »", global.texts().includes("mot de passe ?"), JSON.stringify(global.texts()));
 
-  // --- 5. backoff respecté
-  console.log("\n[5] backoff");
+  // --- 5. plus aucune tentative tant que les identifiants n'ont pas changé
+  console.log("\n[5] pas de nouvel essai avant modification");
   const c5 = readCacheFile(); c5.at = 0; fsn.writeFileSync(CACHE, JSON.stringify(c5));
   global.netCalls = [];
   await load();
   ok("aucun appel pendant le backoff", global.netCalls.length === 0, JSON.stringify(global.netCalls));
 
-  // backoff expiré → nouvelle tentative, cette fois réussie
-  const c5b = readCacheFile(); c5b.at = 0; c5b.fail.at = Date.now() - 2 * 3600 * 1000;
+  // backoff expiré (et même des jours plus tard) : le mot de passe refusé n'est jamais renvoyé
+  for (let i = 0; i < 5; i++) {
+    const c5b = readCacheFile(); c5b.at = 0; c5b.fail.at = Date.now() - 7 * 24 * 3600 * 1000;
+    fsn.writeFileSync(CACHE, JSON.stringify(c5b));
+    Keychain.remove("celcat_login_at");
+    await load();
+  }
+  ok("mot de passe refusé jamais renvoyé", logons() === 0, JSON.stringify(global.netCalls));
+  ok("toujours les anciens cours", global.texts().includes("mot de passe ?"), JSON.stringify(global.texts()));
+
+  // identifiants modifiés (askCredentials efface le refus) → nouvelle tentative, cette fois réussie
+  Keychain.remove("celcat_bad_creds");
+  const c5b = readCacheFile(); c5b.at = 0; c5b.fail.at = Date.now() - 7 * 24 * 3600 * 1000;
   fsn.writeFileSync(CACHE, JSON.stringify(c5b));
   NET = { "/Home/GetCalendarData": JSON.stringify(BASE_EVENTS) };
   global.netCalls = [];
   await load();
   const c5c = readCacheFile();
-  ok("retente après expiration", global.netCalls.length > 0);
+  ok("retente après modification", global.netCalls.length > 0);
   ok("succès efface l'échec", !c5c.fail, JSON.stringify(c5c.fail));
+
+  // sans cache : le refus est quand même retenu (avant, retenté toutes les 15 min)
+  fsn.rmSync(CACHE);
+  Keychain.remove("celcat_login_at");
+  NET = { "/Home/GetCalendarData": "<html>login</html>", "/LdapLogin": LOGIN_FORM };
+  global.netCalls = [];
+  await load(); await load(); await load();
+  ok("sans cache : un seul essai", logons() === 1, JSON.stringify(global.netCalls));
+  ok("sans cache : message affiché", global.texts().some(t => /Mot de passe refusé/.test(t)), JSON.stringify(global.texts()));
+
+  // widgets rafraîchis en même temps : un seul tente la connexion
+  Keychain.remove("celcat_bad_creds");
+  Keychain.set("celcat_login_at", String(Date.now()));
+  global.netCalls = [];
+  await load();
+  ok("connexion simultanée évitée", logons() === 0, JSON.stringify(global.netCalls));
+  Keychain.remove("celcat_login_at");
+  NET = { "/Home/GetCalendarData": JSON.stringify(BASE_EVENTS) };
+  await load();
+  ok("cache restauré", readCacheFile().data.length === 5);
 
   // --- 6. serveur HS → données périmées affichées
   console.log("\n[6] serveur injoignable");

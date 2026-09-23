@@ -119,7 +119,7 @@ Le widget demande à iOS un rafraîchissement au prochain début/fin de cours, e
 | Symptôme | Piste |
 |---|---|
 | « Ouvre le script dans Scriptable pour te connecter. » | Lancer le script dans l'app et enregistrer les identifiants. |
-| « Identifiants refusés » | Mot de passe CY changé → « Changer mes identifiants ». Après un refus, le widget espace ses tentatives (15 min → 1 h → 3 h → 6 h) ; ouvrir le script réessaie immédiatement. |
+| « Mot de passe refusé » | Mot de passe CY changé → « Changer mes identifiants ». Pour ne pas verrouiller ton compte, le widget s'arrête dès le premier refus et ne renvoie plus jamais ce mot de passe : il affiche les cours déjà chargés (« mot de passe ? » en haut) jusqu'à ce que tu modifies tes identifiants. Ouvrir le script te propose directement de les corriger. |
 | Widget vide ou aucun cours | Numéro étudiant (`fid0`) absent ou erroné → le ressaisir via « Changer mes identifiants ». |
 | Une matière s'affiche avec son code | Ajouter une entrée dans `RENAME`. |
 | Pas de notifications | Lancer « Tester les notifications » une fois et autoriser Scriptable dans Réglages iOS. |

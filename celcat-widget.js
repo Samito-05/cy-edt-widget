@@ -15,7 +15,7 @@
 //  - Ajoute un widget Scriptable (grand conseillé) et choisis ce script.
 // ============================================================
 
-const VERSION = "1.1.0";         // version de ce script (comparée à celle du dépôt)
+const VERSION = "1.1.1";         // version de ce script (comparée à celle du dépôt)
 const REPO = "https://github.com/Samito-05/cy-edt-widget";
 const REPO_RAW = "https://raw.githubusercontent.com/Samito-05/cy-edt-widget/main/celcat-widget.js";
 
@@ -39,6 +39,11 @@ const THEME = "auto";            // "auto" (suit l'iPhone), "dark" ou "light"
 const KC_USER = "celcat_user";
 const KC_PASS = "celcat_pass";
 const KC_FID  = "celcat_fid";    // numéro étudiant CELCAT (fid0), saisi ou détecté
+// Mot de passe refusé une fois → plus aucune tentative tant que les identifiants ne sont pas
+// modifiés : l'ENT verrouille le compte après quelques essais ratés.
+const KC_BAD  = "celcat_bad_creds";
+const KC_LOGIN_AT = "celcat_login_at";   // dernière tentative de connexion (widgets lancés en même temps)
+const BAD_CREDS_MSG = "Mot de passe refusé : ouvre le script → « Changer mes identifiants ».";
 let FID = Keychain.contains(KC_FID) ? Keychain.get(KC_FID) : "";
 
 // ---------- style ----------
@@ -147,6 +152,7 @@ async function askCredentials() {
 
   Keychain.set(KC_USER, a.textFieldValue(0).trim());
   if (a.textFieldValue(1)) Keychain.set(KC_PASS, a.textFieldValue(1));
+  if (Keychain.contains(KC_BAD)) Keychain.remove(KC_BAD);   // nouveaux identifiants → on peut réessayer
 
   // Accepte le numéro seul ou l'adresse complète collée (…&fid0=12345678)
   const raw = a.textFieldValue(2).trim();
@@ -179,14 +185,29 @@ function request(url) {
   return r;
 }
 
+function badCredsError() {
+  const err = new Error(BAD_CREDS_MSG);
+  err.badCredentials = true;
+  return err;
+}
+
 async function login() {
   if (!Keychain.contains(KC_USER) || !Keychain.contains(KC_PASS)) {
     if (config.runsInWidget) throw new Error("Ouvre le script dans Scriptable pour te connecter.");
     if (!(await askCredentials())) throw new Error("Connexion annulée.");
   }
+  // Mot de passe déjà refusé : on ne le renvoie jamais. Dans l'app, on propose de le corriger.
+  if (Keychain.contains(KC_BAD)) {
+    if (config.runsInWidget || !(await askCredentials()) || Keychain.contains(KC_BAD)) throw badCredsError();
+  }
   const page = await request(BASE + "/LdapLogin").loadString();
   const m = page.match(/__RequestVerificationToken[^>]*value="([^"]+)"/);
   if (!m) return; // pas de formulaire → pas de connexion nécessaire
+
+  // Plusieurs widgets rafraîchis au même moment : un seul tente la connexion
+  const last = Keychain.contains(KC_LOGIN_AT) ? Number(Keychain.get(KC_LOGIN_AT)) : 0;
+  if (config.runsInWidget && Date.now() - last < 60000) throw new Error("Connexion en cours…");
+  Keychain.set(KC_LOGIN_AT, String(Date.now()));
 
   const r = request(BASE + "/LdapLogin/Logon");
   r.method = "POST";
@@ -196,9 +217,8 @@ async function login() {
   const html = await r.loadString();
   // Identifiants refusés : CELCAT réaffiche le formulaire au lieu de rediriger vers l'agenda
   if (/name="Password"/i.test(html) && /__RequestVerificationToken/.test(html)) {
-    const err = new Error("Identifiants refusés : ouvre le script → « Changer mes identifiants ».");
-    err.badCredentials = true;
-    throw err;
+    Keychain.set(KC_BAD, "1");          // dès le 1er refus : plus d'essai avant modification
+    throw badCredsError();
   }
   if (!FID) detectFid(r.response && r.response.url, html);   // après connexion, CELCAT redirige souvent vers …&fid0=…
 }
@@ -267,6 +287,9 @@ function writeCache(obj) {
 const FAIL_BACKOFF_MIN = [15, 60, 180, 360];
 const backoffMs = f => FAIL_BACKOFF_MIN[Math.min(f.count, FAIL_BACKOFF_MIN.length - 1)] * 60000;
 
+// Libellé d'en-tête quand les données ne sont pas à jour
+const staleText = stale => typeof stale === "string" ? stale : "hors ligne";
+
 const isNight = (d = new Date()) => d.getHours() >= NIGHT_START || d.getHours() < NIGHT_END;
 
 // Prochain rafraîchissement du widget :
@@ -297,7 +320,7 @@ async function getEvents(force = false) {
   // Tentative précédente en échec : on patiente (ouvrir le script dans l'app réessaie tout de suite)
   const fail = cached && cached.fail;
   if (fail && !force && Date.now() - fail.at < backoffMs(fail))
-    return { data: cached.data, stale: true, error: fail.msg, fetched: false };
+    return { data: cached.data, stale: fail.badCredentials ? "mot de passe ?" : true, error: fail.msg, fetched: false };
 
   try {
     let data = FID ? await fetchEvents() : null;
@@ -321,12 +344,15 @@ async function getEvents(force = false) {
     return { data, stale: false, fetched: true, until,
              prev: cached ? cached.data : null, prevUntil: cached ? cached.until : null };
   } catch (e) {
-    // Mot de passe refusé : on attend plus longtemps dès le premier échec
+    // Mot de passe refusé : login() ne réessaiera plus (KC_BAD), on garde les cours déjà chargés
+    const stale = e.badCredentials ? "mot de passe ?" : true;
     if (cached) {
-      const count = fail ? fail.count + 1 : (e.badCredentials ? 1 : 0);
-      try { writeCache({ ...cached, fail: { at: Date.now(), count, msg: e.message } }); } catch (err) {}
+      const count = fail ? fail.count + 1 : 0;
+      const f = { at: Date.now(), count, msg: e.message };
+      if (e.badCredentials) f.badCredentials = true;
+      try { writeCache({ ...cached, fail: f }); } catch (err) {}
     }
-    if (!e.fatal && cached) return { data: cached.data, stale: true, error: e.message, fetched: false };
+    if (!e.fatal && cached) return { data: cached.data, stale, error: e.message, fetched: false };
     throw e;
   }
 }
@@ -646,7 +672,7 @@ function buildWidget(events, fam, stale, error, offset = 0) {
   }
   head.addSpacer();
   if (stale) {
-    const s = head.addText("hors ligne");
+    const s = head.addText(staleText(stale));
     s.font = STYLE.font(9); s.textColor = Color.orange();
   } else if (fam !== "small" && dayEvents.some(e => !e.cancelled)) {
     const c = head.addText(`${dayEvents.filter(e => !e.cancelled).length} cours`);
@@ -785,7 +811,7 @@ function buildWeekWidget(events, stale, error, weekOffset = 0) {
   const h1 = head.addText(`Semaine du ${fmtDate(monday, "d MMM")}`);
   h1.font = STYLE.bold(15); h1.textColor = STYLE.text;
   head.addSpacer();
-  const h2 = head.addText(stale ? "hors ligne" : `${weekEvents.filter(e => !e.cancelled).length} cours`);
+  const h2 = head.addText(stale ? staleText(stale) : `${weekEvents.filter(e => !e.cancelled).length} cours`);
   h2.font = STYLE.font(stale ? 9 : 11); h2.textColor = stale ? Color.orange() : STYLE.muted;
   w.addSpacer(6);
 
@@ -1145,7 +1171,7 @@ function buildNextWidget(events, fam, stale, error) {
   }
   text(head, inProgress ? "En cours" : "Prochain cours", STYLE.font(11), inProgress ? STYLE.now : STYLE.muted);
   head.addSpacer();
-  if (stale) text(head, "hors ligne", STYLE.font(9), Color.orange());
+  if (stale) text(head, staleText(stale), STYLE.font(9), Color.orange());
 
   w.addSpacer();                         // infos calées en bas du widget
   text(w, e.module, STYLE.bold(fam === "small" ? 15 : 17), STYLE.text, 2);
