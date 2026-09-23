@@ -1,0 +1,4 @@
+# Le script est copié-collé dans Scriptable sur iOS : fins de ligne LF partout,
+# quelle que soit la plateforme du contributeur.
+* text=auto eol=lf
+*.png binary

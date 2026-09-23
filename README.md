@@ -1,5 +1,7 @@
 # cy-edt-widget
 
+[![tests](https://github.com/Samito-05/cy-edt-widget/actions/workflows/test.yml/badge.svg)](https://github.com/Samito-05/cy-edt-widget/actions/workflows/test.yml)
+
 Widget iOS **non officiel** (via [Scriptable](https://scriptable.app)) pour l'emploi du temps CELCAT de **CY Tech / CY Cergy Paris Université** (`celcat-calendar.cyu.fr`).
 
 Tes cours directement sur l'écran d'accueil : horaires, salles, type de cours, cours annulés, notifications de changement et synchronisation avec le calendrier iPhone.
@@ -36,6 +38,10 @@ Tes cours directement sur l'écran d'accueil : horaires, salles, type de cours, 
 - **Protection du compte CY** : si CELCAT refuse les identifiants, le widget s'arrête **dès la première tentative** et ne renvoie plus jamais le mot de passe — sinon il le rejouerait toutes les 15 min et l'annuaire CY finirait par bloquer le compte. L'emploi du temps déjà téléchargé reste affiché, avec le badge « identifiants ✗ ». Le verrou saute dès que l'identifiant ou le mot de passe est modifié (ou via « Débloquer et réessayer une fois » dans le menu). Le mot de passe ne part qu'une seule fois même si plusieurs widgets se réveillent ensemble, ou si iOS coupe le script avant la réponse.
 
 ## Installation
+
+> **Prérequis : iOS 16 ou plus.** Les widgets d'écran verrouillé (`accessoryRectangular`,
+> `accessoryCircular`, `accessoryInline`) et le marquage « libre / occupé » dans le
+> calendrier en dépendent. Sur iOS 15, seuls les widgets d'écran d'accueil fonctionnent.
 
 1. Installer **Scriptable** depuis l'App Store.
 2. Copier le contenu de [`celcat-widget.js`](celcat-widget.js).
@@ -130,7 +136,9 @@ Le widget demande à iOS un rafraîchissement au prochain début/fin de cours, e
 
 ## Vie privée
 
-Identifiants et numéro étudiant sont stockés dans le **Trousseau iOS**. Les cours sont mis en cache localement dans le dossier Scriptable. Le script ne communique qu'avec `celcat-calendar.cyu.fr` — aucun serveur tiers, aucune télémétrie.
+Identifiants et numéro étudiant sont stockés dans le **Trousseau iOS**. Les cours sont mis en cache localement dans le dossier Scriptable. Le script ne communique qu'avec `celcat-calendar.cyu.fr` — aucun serveur tiers, aucune télémétrie (la seule exception : « Vérifier les mises à jour », qui lit le numéro de version sur GitHub, à la demande, et ne télécharge jamais de code).
+
+Le fichier de verrou `celcat_auth.json` ne contient qu'une empreinte **salée** des identifiants : le sel reste dans le Trousseau, et l'empreinte seule ne permet ni de retrouver le mot de passe ni d'en connaître la longueur.
 
 ## Tests
 
@@ -140,7 +148,7 @@ Le script tourne dans un faux environnement Scriptable (stubs `Request`, `Keycha
 node test/widget.test.js
 ```
 
-Node ≥ 18, aucune dépendance.
+Node ≥ 18, aucune dépendance. Les tests tournent aussi en CI sur chaque push et chaque pull request (voir le badge en haut).
 
 ## Licence
 
