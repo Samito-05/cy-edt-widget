@@ -686,21 +686,6 @@ function largeWidgetSize() {
   return new Size(292, 311);
 }
 
-// Filets horizontaux (une ligne par heure) dessinés en image de fond de la grille :
-// un Stack ne peut pas superposer deux contenus, le fond est le seul moyen de les faire
-// passer DERRIÈRE les cours. Gris neutre : lisible en clair comme en sombre.
-function hourLines(width, height, startMin, endMin, scale) {
-  const ctx = new DrawContext();
-  ctx.size = new Size(width, height);
-  ctx.opaque = false;
-  ctx.respectScreenScale = true;
-  ctx.setFillColor(new Color("#808080", 0.22));
-  for (let m = startMin + 60; m < endMin; m += 60) {
-    ctx.fillRect(new Rect(0, Math.round((m - startMin) * scale), width, 0.5));
-  }
-  return ctx.getImage();
-}
-
 // Trait "maintenant" : seulement s'il tombe dans un trou de l'emploi du temps —
 // pendant un cours, la carte verte "en cours" dit déjà où on en est.
 function addNowLine(col, width) {
@@ -814,7 +799,6 @@ function buildWeekWidget(events, stale, error, weekOffset = 0) {
   const grid = w.addStack();
   grid.layoutHorizontally();
   grid.topAlignContent();
-  try { grid.backgroundImage = hourLines(innerW, gridH, startMin, endMin, scale); } catch (err) {}
 
   const axis = grid.addStack();
   axis.layoutVertically();
