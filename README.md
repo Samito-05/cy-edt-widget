@@ -33,7 +33,7 @@ Tes cours directement sur l'écran d'accueil : horaires, salles, type de cours, 
 - **Synchronisation calendrier** dans un calendrier iPhone dédié (« Cours CY »).
 - **Mode clair / sombre** automatique.
 - **Cache hors ligne** : les données sont réutilisées si le réseau est indisponible, et aucun appel réseau n'est fait la nuit (22h → 7h). En cas de panne réseau ou serveur, les tentatives sont espacées progressivement.
-- **Protection du compte CY** : si CELCAT refuse les identifiants, le widget s'arrête **dès la première tentative** et ne renvoie plus jamais le mot de passe — sinon il le rejouerait toutes les 15 min et l'annuaire CY finirait par bloquer le compte. L'emploi du temps déjà téléchargé reste affiché, avec le badge « identifiants ✗ ». Le verrou saute dès que l'identifiant ou le mot de passe est modifié (ou via « Débloquer et réessayer une fois » dans le menu).
+- **Protection du compte CY** : si CELCAT refuse les identifiants, le widget s'arrête **dès la première tentative** et ne renvoie plus jamais le mot de passe — sinon il le rejouerait toutes les 15 min et l'annuaire CY finirait par bloquer le compte. L'emploi du temps déjà téléchargé reste affiché, avec le badge « identifiants ✗ ». Le verrou saute dès que l'identifiant ou le mot de passe est modifié (ou via « Débloquer et réessayer une fois » dans le menu). Le mot de passe ne part qu'une seule fois même si plusieurs widgets se réveillent ensemble, ou si iOS coupe le script avant la réponse.
 
 ## Installation
 
