@@ -15,7 +15,7 @@
 //  - Ajoute un widget Scriptable (grand conseillé) et choisis ce script.
 // ============================================================
 
-const VERSION = "1.1.0";         // version de ce script (comparée à celle du dépôt)
+const VERSION = "1.2.0";         // version de ce script (comparée à celle du dépôt)
 const REPO = "https://github.com/Samito-05/cy-edt-widget";
 const REPO_RAW = "https://raw.githubusercontent.com/Samito-05/cy-edt-widget/main/celcat-widget.js";
 
@@ -40,6 +40,7 @@ const KC_USER = "celcat_user";
 const KC_PASS = "celcat_pass";
 const KC_FID  = "celcat_fid";    // numéro étudiant CELCAT (fid0), saisi ou détecté
 let FID = Keychain.contains(KC_FID) ? Keychain.get(KC_FID) : "";
+let AUTH_BAD = false;            // identifiants refusés : plus aucune tentative de connexion
 
 // ---------- style ----------
 // Couleur qui suit le mode clair / sombre de l'iPhone (selon THEME)
@@ -81,6 +82,7 @@ const TYPE_COLORS = [
 
 const fm = FileManager.local();
 const CACHE = fm.joinPath(fm.documentsDirectory(), "celcat_cache.json");
+const AUTHLOCK = fm.joinPath(fm.documentsDirectory(), "celcat_auth.json");
 
 // ---------- utilitaires ----------
 const pad = n => String(n).padStart(2, "0");
@@ -132,6 +134,53 @@ function dayLabel(d) {
 }
 
 // ---------- identifiants ----------
+// Empreinte des identifiants : sert uniquement à repérer qu'ils ont changé.
+// Le mot de passe lui-même ne sort jamais du Trousseau iOS.
+function credFingerprint() {
+  const s = (Keychain.contains(KC_USER) ? Keychain.get(KC_USER) : "") + "\u0000" +
+            (Keychain.contains(KC_PASS) ? Keychain.get(KC_PASS) : "");
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h.toString(36) + "." + s.length;
+}
+
+// Verrou local. Dès le PREMIER refus d'identifiants, plus aucune tentative de
+// connexion n'est envoyée à CELCAT : sinon le widget rejouerait le mauvais mot de
+// passe toutes les 15 min et l'annuaire CY finirait par bloquer le compte.
+// Le verrou saute dès que les identifiants changent, ou via le menu du script.
+function readAuthLock() {
+  try {
+    if (!fm.fileExists(AUTHLOCK)) return null;
+    const l = JSON.parse(fm.readString(AUTHLOCK));
+    if (l.fp !== credFingerprint()) { clearAuthLock(); return null; }   // identifiants modifiés
+    return l;
+  } catch (e) { return null; }
+}
+
+function setAuthLock(msg) {
+  try { fm.writeString(AUTHLOCK, JSON.stringify({ at: Date.now(), fp: credFingerprint(), msg })); }
+  catch (e) {}
+}
+
+function clearAuthLock() {
+  try { if (fm.fileExists(AUTHLOCK)) fm.remove(AUTHLOCK); } catch (e) {}
+}
+
+function credError(msg) {
+  const e = new Error(msg);
+  e.badCredentials = true;
+  return e;
+}
+
+// Message d'erreur affiché par la page de connexion CELCAT, s'il y en a un
+function loginErrorMessage(html) {
+  const m = String(html).match(/validation-summary-errors[^>]*>([\s\S]{0,400}?)<\/div>/i);
+  const txt = m ? m[1].replace(/<[^>]+>/g, " ").replace(/&[#a-z0-9]+;/gi, " ").replace(/\s+/g, " ").trim() : "";
+  if (/verrouill|bloqu|locked|disabled/i.test(txt)) return "Compte CY bloqué : " + txt;
+  return (txt ? txt + " — " : "Identifiants refusés — ") +
+         "ouvre le script → « Changer mes identifiants ».";
+}
+
 async function askCredentials() {
   const a = new Alert();
   a.title = "Connexion CELCAT";
@@ -153,6 +202,8 @@ async function askCredentials() {
   const m = raw.match(/fid0=(\d+)/) || raw.match(/\d{5,}/);
   if (m) saveFid(m[1] || m[0]);
   else { FID = ""; if (Keychain.contains(KC_FID)) Keychain.remove(KC_FID); }
+  clearAuthLock();   // nouveaux identifiants → on a le droit de retenter
+  AUTH_BAD = false;
   return true;
 }
 
@@ -184,6 +235,10 @@ async function login() {
     if (config.runsInWidget) throw new Error("Ouvre le script dans Scriptable pour te connecter.");
     if (!(await askCredentials())) throw new Error("Connexion annulée.");
   }
+  // Un refus a déjà eu lieu avec CES identifiants : on n'envoie plus rien.
+  const lock = readAuthLock();
+  if (lock) throw credError(lock.msg);
+
   const page = await request(BASE + "/LdapLogin").loadString();
   const m = page.match(/__RequestVerificationToken[^>]*value="([^"]+)"/);
   if (!m) return; // pas de formulaire → pas de connexion nécessaire
@@ -196,9 +251,9 @@ async function login() {
   const html = await r.loadString();
   // Identifiants refusés : CELCAT réaffiche le formulaire au lieu de rediriger vers l'agenda
   if (/name="Password"/i.test(html) && /__RequestVerificationToken/.test(html)) {
-    const err = new Error("Identifiants refusés : ouvre le script → « Changer mes identifiants ».");
-    err.badCredentials = true;
-    throw err;
+    const msg = loginErrorMessage(html);
+    setAuthLock(msg);          // une seule tentative : on s'arrête là
+    throw credError(msg);
   }
   if (!FID) detectFid(r.response && r.response.url, html);   // après connexion, CELCAT redirige souvent vers …&fid0=…
 }
@@ -267,6 +322,10 @@ function writeCache(obj) {
 const FAIL_BACKOFF_MIN = [15, 60, 180, 360];
 const backoffMs = f => FAIL_BACKOFF_MIN[Math.min(f.count, FAIL_BACKOFF_MIN.length - 1)] * 60000;
 
+// Badge d'état en haut du widget
+const staleLabel = () => AUTH_BAD ? "identifiants ✗" : "hors ligne";
+const staleColor = () => AUTH_BAD ? Color.red() : Color.orange();
+
 const isNight = (d = new Date()) => d.getHours() >= NIGHT_START || d.getHours() < NIGHT_END;
 
 // Prochain rafraîchissement du widget :
@@ -290,9 +349,12 @@ function nextRefresh(edges) {
 async function getEvents(force = false) {
   // Données en mémoire suffisantes ? (nuit, ou téléchargées il y a moins de FETCH_MIN min,
   // ce qui évite aussi que plusieurs widgets téléchargent chacun de leur côté)
+  const lock = readAuthLock();
+  AUTH_BAD = !!lock;
   const cached = readCache();
   const fresh = cached && Date.now() - cached.at < (FETCH_MIN - 1) * 60000;
-  if (cached && FID && !force && (fresh || isNight())) return { data: cached.data, stale: false, fetched: false };
+  if (cached && FID && !force && (fresh || isNight()))
+    return { data: cached.data, stale: !!lock, error: lock && lock.msg, fetched: false };
 
   // Tentative précédente en échec : on patiente (ouvrir le script dans l'app réessaie tout de suite)
   const fail = cached && cached.fail;
@@ -321,12 +383,16 @@ async function getEvents(force = false) {
     return { data, stale: false, fetched: true, until,
              prev: cached ? cached.data : null, prevUntil: cached ? cached.until : null };
   } catch (e) {
-    // Mot de passe refusé : on attend plus longtemps dès le premier échec
+    if (e.badCredentials) AUTH_BAD = true;
+    // Mot de passe refusé : le verrou a déjà coupé les tentatives ; ce décompte
+    // ne sert plus qu'aux pannes réseau / serveur.
     if (cached) {
       const count = fail ? fail.count + 1 : (e.badCredentials ? 1 : 0);
       try { writeCache({ ...cached, fail: { at: Date.now(), count, msg: e.message } }); } catch (err) {}
     }
     if (!e.fatal && cached) return { data: cached.data, stale: true, error: e.message, fetched: false };
+    // Identifiants refusés sans rien en mémoire : on affiche l'erreur, pas un plantage
+    if (e.badCredentials) return { data: [], stale: true, error: e.message, fetched: false };
     throw e;
   }
 }
@@ -646,8 +712,8 @@ function buildWidget(events, fam, stale, error, offset = 0) {
   }
   head.addSpacer();
   if (stale) {
-    const s = head.addText("hors ligne");
-    s.font = STYLE.font(9); s.textColor = Color.orange();
+    const s = head.addText(staleLabel());
+    s.font = STYLE.font(9); s.textColor = staleColor();
   } else if (fam !== "small" && dayEvents.some(e => !e.cancelled)) {
     const c = head.addText(`${dayEvents.filter(e => !e.cancelled).length} cours`);
     c.font = STYLE.font(11); c.textColor = STYLE.muted;
@@ -785,8 +851,8 @@ function buildWeekWidget(events, stale, error, weekOffset = 0) {
   const h1 = head.addText(`Semaine du ${fmtDate(monday, "d MMM")}`);
   h1.font = STYLE.bold(15); h1.textColor = STYLE.text;
   head.addSpacer();
-  const h2 = head.addText(stale ? "hors ligne" : `${weekEvents.filter(e => !e.cancelled).length} cours`);
-  h2.font = STYLE.font(stale ? 9 : 11); h2.textColor = stale ? Color.orange() : STYLE.muted;
+  const h2 = head.addText(stale ? staleLabel() : `${weekEvents.filter(e => !e.cancelled).length} cours`);
+  h2.font = STYLE.font(stale ? 9 : 11); h2.textColor = stale ? staleColor() : STYLE.muted;
   w.addSpacer(6);
 
   // Ligne des jours
@@ -1145,7 +1211,7 @@ function buildNextWidget(events, fam, stale, error) {
   }
   text(head, inProgress ? "En cours" : "Prochain cours", STYLE.font(11), inProgress ? STYLE.now : STYLE.muted);
   head.addSpacer();
-  if (stale) text(head, "hors ligne", STYLE.font(9), Color.orange());
+  if (stale) text(head, staleLabel(), STYLE.font(9), staleColor());
 
   w.addSpacer();                         // infos calées en bas du widget
   text(w, e.module, STYLE.bold(fam === "small" ? 15 : 17), STYLE.text, 2);
@@ -1250,6 +1316,7 @@ let offset = weekParam ? (parseInt(weekParam[2], 10) || 0) : (parseInt(param, 10
 if (family.startsWith("accessory")) view = "next";
 
 if (!config.runsInWidget) {
+  const lock = readAuthLock();
   const actions = [
     ["Aperçu grand widget",               { family: "large",  view: "day" }],
     ["Aperçu widget moyen",               { family: "medium", view: "day" }],
@@ -1268,13 +1335,18 @@ if (!config.runsInWidget) {
     ["Données brutes (debug)",            { debug: true }],
     ["Vérifier les mises à jour",         { update: true }],
   ];
+  if (lock) actions.unshift(["Débloquer et réessayer une fois", { unlock: true }]);
   const menu = new Alert();
   menu.title = "Widget CELCAT";
+  if (lock) menu.message = "⚠️ " + lock.msg +
+    "\nAucune connexion n'est tentée tant que les identifiants ne changent pas " +
+    "(protection contre le blocage du compte CY).";
   actions.forEach(([label]) => menu.addAction(label));
   menu.addCancelAction("Fermer");
   const c = await menu.present();
   if (c === -1) { Script.complete(); return; }
   const choice = actions[c][1];
+  if (choice.unlock) { clearAuthLock(); AUTH_BAD = false; }
   if (choice.creds) await askCredentials();
   if (choice.testNotif) {
     // Au 1er essai, iOS demande l'autorisation d'envoyer des notifications à Scriptable
