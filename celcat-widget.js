@@ -15,6 +15,10 @@
 //  - Ajoute un widget Scriptable (grand conseillé) et choisis ce script.
 // ============================================================
 
+const VERSION = "1.1.0";         // version de ce script (comparée à celle du dépôt)
+const REPO = "https://github.com/Samito-05/cy-edt-widget";
+const REPO_RAW = "https://raw.githubusercontent.com/Samito-05/cy-edt-widget/main/celcat-widget.js";
+
 const BASE = "https://celcat-calendar.cyu.fr";
 const DAYS_AHEAD = 14;           // jours récupérés (couvre week-ends / vacances courtes)
 const FETCH_MIN = 15;            // en journée : l'emploi du temps est retéléchargé toutes les 15 min
@@ -80,6 +84,16 @@ const CACHE = fm.joinPath(fm.documentsDirectory(), "celcat_cache.json");
 
 // ---------- utilitaires ----------
 const pad = n => String(n).padStart(2, "0");
+
+// CELCAT renvoie "2026-09-23T08:00:00", sans fuseau : on lit les composants nous-mêmes
+// pour que ce soit toujours l'heure locale, quelle que soit la version de JavaScriptCore.
+// Une date qui porte un fuseau ("…Z", "…+02:00") est laissée à Date, qui sait la convertir.
+function parseDate(v) {
+  if (v instanceof Date) return v;
+  const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (!m) return new Date(v);
+  return new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+}
 const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const hm = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const enc = encodeURIComponent;
@@ -299,7 +313,7 @@ async function getEvents(force = false) {
     }
     if (!data) throw new Error("Connexion refusée (identifiants ?)");
     // Réponse vide alors qu'on avait des cours à venir → raté du serveur : on garde l'ancienne version
-    if (!data.length && cached && cached.data.filter(e => new Date(e.start) > new Date()).length >= 4)
+    if (!data.length && cached && cached.data.filter(e => parseDate(e.start) > new Date()).length >= 4)
       throw new Error("Réponse vide du serveur");
     const until = fetchWindow().end.getTime();
     writeCache({ at: Date.now(), fid: FID, until, data });   // succès → l'historique d'échecs est effacé
@@ -360,7 +374,10 @@ function candidates(e, category) {
 function frequentLines(data) {
   const count = {};
   data.forEach(e => new Set(candidates(e, "").map(cleanName)).forEach(l => count[l] = (count[l] || 0) + 1));
-  return new Set(Object.keys(count).filter(l => data.length >= 4 && count[l] / data.length >= 0.5));
+  // En semaine creuse (vacances, semaine d'examens) il reste peu de cours : on exige
+  // alors qu'un intitulé soit présent PARTOUT pour le considérer comme un groupe/promo.
+  const min = data.length >= 4 ? 0.5 : 1;
+  return new Set(Object.keys(count).filter(l => data.length >= 2 && count[l] / data.length >= min));
 }
 
 function parse(e, frequent) {
@@ -378,8 +395,8 @@ function parse(e, frequent) {
   module = module.replace(new RegExp(`^${esc}\\s*[-:]\\s*`), "");
 
   const type = TYPE_COLORS.find(t => t.re.test(category));
-  const start = new Date(e.start);
-  const end = e.end ? new Date(e.end) : new Date(start.getTime() + 3600000);
+  const start = parseDate(e.start);
+  const end = e.end ? parseDate(e.end) : new Date(start.getTime() + 3600000);
   // Journée entière (férié, vacances, journée d'intégration…) : pas d'horaire à afficher,
   // et surtout pas de rappel « dans 10 min » à minuit.
   const allDay = e.allDay === true || !e.end || (+end - +start) >= 20 * 3600000;
@@ -1139,15 +1156,94 @@ function buildNextWidget(events, fam, stale, error) {
   return w;
 }
 
+// ---------- mises à jour ----------
+// Compare la ligne VERSION du script à celle publiée sur GitHub. Appelé seulement
+// depuis le menu (jamais depuis un widget) : une seule requête, déclenchée à la main.
+function versionRank(v) {
+  return String(v).split(".").map(n => parseInt(n, 10) || 0);
+}
+
+function isNewer(remote, local) {
+  const a = versionRank(remote), b = versionRank(local);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0);
+  }
+  return false;
+}
+
+async function checkUpdate() {
+  const r = request(REPO_RAW);
+  const src = await r.loadString();
+  const m = src.match(/const VERSION = "([^"]+)"/);
+  if (!m) throw new Error("Version introuvable sur GitHub.");
+  return { remote: m[1], newer: isNewer(m[1], VERSION) };
+}
+
+// ---------- démo ----------
+// Emploi du temps fictif, au format renvoyé par CELCAT : il traverse donc le même
+// parsing et le même rendu que les vraies données. Sert aux captures d'écran du
+// dépôt et à essayer le widget avant d'avoir ses identifiants.
+// Widget → Parameter : "demo", "demo semaine", "demo prochain", "demo 1"…
+function demoData() {
+  const monday = mondayOf(new Date());
+  const day = i => { const d = new Date(monday); d.setDate(d.getDate() + i); return d; };
+  const stamp = (d, h, m) => `${ymd(d)}T${pad(h)}:${pad(m)}:00`;
+  const mk = (id, i, [sh, sm], [eh, em], cat, mod, room, staff, note) => {
+    const d = day(i);
+    return {
+      id: "demo" + id, start: stamp(d, sh, sm), end: stamp(d, eh, em), allDay: false,
+      eventCategory: cat, modules: [mod], sites: ["FER"],
+      description: [cat, mod, "ING2 GSI", room ? `FER ${room} SALLE DE COURS 40p` : "", staff, note]
+                     .filter(Boolean).join("<br />"),
+    };
+  };
+  const events = [
+    mk(1, 0, [8, 30], [10, 0],  "CM", "I2GSIM07 - Statistiques", "AMPHI B", "MARTIN CLAIRE"),
+    mk(2, 0, [10, 15], [11, 45], "TD", "Économie I2GECO01",      "FT202", "DUBOIS PAUL"),
+    mk(3, 0, [13, 0], [14, 30], "TD", "Projet tutoré",           "FT310", "DA SILVA INES"),
+    mk(4, 1, [9, 0], [10, 30],  "CM", "Cybersécurité I2GCYB01",  "AMPHI A", "NGUYEN ANH"),
+    mk(5, 1, [10, 45], [12, 15], "TD", "IA : Théorie",           "FT202", "MARTIN CLAIRE"),
+    mk(6, 1, [14, 0], [15, 30], "TD", "Test logiciel I2GTST01",  "FT105", "BERNARD LUC"),
+    mk(7, 3, [8, 30], [10, 0],  "TD", "Économie I2GECO01",       "FT202", "DUBOIS PAUL"),
+    mk(8, 3, [10, 15], [11, 45], "CM", "Test logiciel I2GTST01", "FT105", "BERNARD LUC", "Annulé"),
+    mk(9, 3, [12, 0], [13, 30], "TD", "Anglais DIOANG3D",        "FT310", "SMITH JANE, LEROY EMMA"),
+    mk(10, 3, [15, 0], [16, 30], "TD", "I2GSIM07 - Statistiques", "FT202", "MARTIN CLAIRE"),
+    mk(11, 4, [8, 30], [10, 0], "TD", "IA : Théorie",            "FT202", "MARTIN CLAIRE"),
+    mk(12, 4, [13, 0], [14, 30], "TD", "Conception Systèmes",    "FT105", "NGUYEN ANH"),
+    mk(13, 4, [16, 45], [18, 0], "Examen", "Mathématiques",      "AMPHI B", "BERNARD LUC"),
+  ];
+  // Un cours cale sur l'heure de la capture : carte verte « En cours · fin … »
+  const now = new Date();
+  const from = new Date(now.getTime() - 20 * 60000);
+  const to = new Date(now.getTime() + 70 * 60000);
+  events.push({
+    id: "demo0", allDay: false,
+    start: stamp(now, from.getHours(), from.getMinutes()),
+    end: stamp(now, to.getHours(), to.getMinutes()),
+    eventCategory: "TD", modules: ["Anglais DIOANG3D"], sites: ["FER"],
+    description: "TD<br />Anglais DIOANG3D<br />ING2 GSI<br />FER FT310 SALLE DE COURS 40p<br />SMITH JANE",
+  });
+  // Jour férié (journée entière) en milieu de semaine
+  events.push({
+    id: "demo-ferie", allDay: true, start: ymd(day(2)), end: null,
+    eventCategory: "Férié", modules: ["Jour férié"], sites: [],
+    description: "Férié<br />Jour férié",
+  });
+  return events;
+}
+
 // ---------- main ----------
 // Paramètre du widget (appui long → Modifier le widget → Parameter) :
 //   vide ou 0   → jour actuel (ou prochain jour de cours)
 //   1, 2, 3…    → jours de cours suivants (pour une pile de widgets qu'on fait défiler)
 //   semaine     → vue semaine (grand widget) ; "semaine 1" → semaine suivante
 //   prochain    → uniquement le prochain cours et sa salle
+//   demo…       → emploi du temps fictif, sans réseau ("demo semaine", "demo prochain"…)
 // Écran verrouillé : affiche toujours le prochain cours et sa salle.
 let family = config.widgetFamily || "large";
-const param = String(args.widgetParameter || "").trim().toLowerCase();
+const rawParam = String(args.widgetParameter || "").trim().toLowerCase();
+let demo = /^d[ée]mo\b/.test(rawParam);              // "demo", "demo semaine", "demo prochain"…
+const param = rawParam.replace(/^d[ée]mo\s*/, "");
 const weekParam = param.match(/^(semaine|week)\s*\+?\s*(\d*)$/);
 let view = weekParam ? "week" : /^(prochain|next)$/.test(param) ? "next" : "day";
 let offset = weekParam ? (parseInt(weekParam[2], 10) || 0) : (parseInt(param, 10) || 0);
@@ -1161,9 +1257,16 @@ if (!config.runsInWidget) {
     ["Aperçu vue semaine",                { family: "large",  view: "week" }],
     ["Aperçu prochain cours",             { family: "small",  view: "next" }],
     ["Aperçu écran verrouillé",           { family: "accessoryRectangular", view: "next" }],
+    ["Démo · grand widget",               { family: "large",  view: "day",  demo: true }],
+    ["Démo · widget moyen",               { family: "medium", view: "day",  demo: true }],
+    ["Démo · petit widget",               { family: "small",  view: "day",  demo: true }],
+    ["Démo · vue semaine",                { family: "large",  view: "week", demo: true }],
+    ["Démo · prochain cours",             { family: "small",  view: "next", demo: true }],
+    ["Démo · écran verrouillé",           { family: "accessoryRectangular", view: "next", demo: true }],
     ["Changer mes identifiants",          { creds: true }],
     ["Tester les notifications",          { testNotif: true }],
     ["Données brutes (debug)",            { debug: true }],
+    ["Vérifier les mises à jour",         { update: true }],
   ];
   const menu = new Alert();
   menu.title = "Widget CELCAT";
@@ -1183,6 +1286,22 @@ if (!config.runsInWidget) {
     await n.schedule();
     Script.complete(); return;
   }
+  if (choice.update) {
+    const a = new Alert();
+    a.title = "Mise à jour";
+    try {
+      const { remote, newer } = await checkUpdate();
+      a.message = newer
+        ? `Version ${remote} disponible (tu as la ${VERSION}).
+Copie le script depuis ${REPO} pour mettre à jour.`
+        : `Le script est à jour (version ${VERSION}).`;
+    } catch (e) {
+      a.message = "Vérification impossible : " + e.message;
+    }
+    a.addAction("OK");
+    await a.present();
+    Script.complete(); return;
+  }
   if (choice.debug) {
     try {
       const { data } = await getEvents(true);
@@ -1198,11 +1317,15 @@ if (!config.runsInWidget) {
   family = choice.family || "large";
   view = choice.view || "day";
   offset = 0;
+  demo = !!choice.demo;
 }
 
 let widget;
 try {
-  const res = await getEvents(!config.runsInWidget);   // dans l'app : toujours à jour
+  // Démo : données fictives, aucun appel réseau, rien d'écrit dans le calendrier,
+  // aucune notification envoyée (res.fetched reste faux).
+  const res = demo ? { data: demoData(), stale: false, fetched: false }
+                   : await getEvents(!config.runsInWidget);   // dans l'app : toujours à jour
   const { data, stale, error } = res;
   const events = parseAll(data);
   // Nouvelles données → notifications de changement, rappels, calendrier

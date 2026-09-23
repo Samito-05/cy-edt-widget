@@ -298,6 +298,54 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
      JSON.stringify(mt));
   ok("salles affichées", mt.some(t => t.includes("FT202")) && mt.some(t => t.includes("FT305")), JSON.stringify(mt));
 
+  // --- 12. mode démo
+  console.log("\n[12] mode démo");
+  for (const [fam, p] of [["large", "demo"], ["large", "demo semaine"], ["small", "demo prochain"],
+                          ["medium", "demo"], ["accessoryRectangular", "demo"]]) {
+    global.config.widgetFamily = fam; global.args.widgetParameter = p;
+    global.netCalls = []; global.calendarOps = []; global.notifications = [];
+    NET = {};                                    // tout appel réseau échouerait
+    fsn.rmSync(CACHE, { force: true });
+    let err = null;
+    try { await load(); } catch (e) { err = e; }
+    ok(`démo ${fam} "${p}"`, !err, err && err.message);
+    ok("  aucun réseau", global.netCalls.length === 0, JSON.stringify(global.netCalls));
+    ok("  rien écrit (calendrier, notifs, cache)",
+       !global.calendarOps.length && !global.notifications.length && !fsn.existsSync(CACHE),
+       JSON.stringify([global.calendarOps, global.notifications]));
+  }
+  global.config.widgetFamily = "large"; global.args.widgetParameter = "demo";
+  await load();
+  const dt = global.texts();
+  ok("démo : cours affichés", dt.some(t => /Statistiques|Anglais|Économie/.test(t)), JSON.stringify(dt).slice(0, 200));
+
+  // --- 13. dates sans fuseau lues en heure locale
+  console.log("\n[13] lecture des dates");
+  global.args.widgetParameter = "";
+  const at8 = new Date(); at8.setHours(8, 30, 0, 0);
+  const iso830 = `${at8.getFullYear()}-${String(at8.getMonth() + 1).padStart(2, "0")}-${String(at8.getDate()).padStart(2, "0")}T08:30:00`;
+  NET = { "/Home/GetCalendarData": JSON.stringify([{
+    id: "z1", start: iso830, end: iso830.replace("T08:30", "T10:00"), allDay: false,
+    eventCategory: "TD", modules: ["Statistiques"], sites: ["FER"],
+    description: "TD<br />Statistiques<br />FER FT202 SALLE DE TD 40p",
+  }]) };
+  fsn.rmSync(CACHE, { force: true });
+  await load();
+  ok("08:30 affiché tel quel", global.texts().includes("08:30"), JSON.stringify(global.texts()));
+
+  // --- 14. comparaison de versions
+  console.log("\n[14] mises à jour");
+  const widgetSrc = fsn.readFileSync(pathn.join(__dirname, "..", "celcat-widget.js"), "utf8");
+  const version = (widgetSrc.match(/const VERSION = "([^"]+)"/) || [])[1];
+  ok("VERSION présente", !!version, version);
+  const cmp = new Function(widgetSrc.slice(widgetSrc.indexOf("function versionRank"),
+                                           widgetSrc.indexOf("async function checkUpdate")) +
+                           "return { versionRank, isNewer };")();
+  ok("1.2.0 > 1.1.0", cmp.isNewer("1.2.0", "1.1.0"));
+  ok("1.1.0 = 1.1.0 → pas de mise à jour", !cmp.isNewer("1.1.0", "1.1.0"));
+  ok("1.10.0 > 1.9.0 (comparaison numérique)", cmp.isNewer("1.10.0", "1.9.0"));
+  ok("1.0.9 < 1.1.0", !cmp.isNewer("1.0.9", "1.1.0"));
+
   console.log(`\n${pass} OK, ${fail} FAIL`);
   process.exit(fail ? 1 : 0);
 })();

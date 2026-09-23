@@ -17,7 +17,7 @@ Tes cours directement sur l'écran d'accueil : horaires, salles, type de cours, 
 
 </details>
 
-*Aperçus réalisés avec des données fictives : cours, salles et enseignants inventés.*
+*Aperçus réalisés avec des données fictives : cours, salles et enseignants inventés. Page source : [`docs/preview.html`](docs/preview.html).*
 
 ---
 
@@ -57,8 +57,20 @@ Appui long sur le widget → **Modifier le widget** → champ `Parameter` :
 | `semaine` | Vue semaine (grand widget) |
 | `semaine 1` | Semaine suivante (`semaine 2`, etc.) |
 | `prochain` | Uniquement le prochain cours et sa salle |
+| `demo` | Emploi du temps fictif, sans réseau (`demo semaine`, `demo prochain`, `demo 1`… fonctionnent aussi) |
 
 Sur l'**écran verrouillé**, le widget affiche toujours le prochain cours et sa salle, quel que soit le paramètre.
+
+## Mode démo
+
+Le script embarque un emploi du temps fictif : aucun identifiant, aucun appel réseau, rien d'écrit dans le calendrier, aucune notification. De quoi essayer le widget avant de se connecter — et faire des captures sans exposer son vrai planning.
+
+- Dans l'app : lancer le script → entrées **« Démo · … »** (grand, moyen, petit, semaine, prochain cours, écran verrouillé).
+- Sur l'écran d'accueil : appui long → **Modifier le widget** → `Parameter` = `demo` (ou `demo semaine`, `demo prochain`…).
+
+## Mises à jour
+
+Le script porte un numéro de version (`const VERSION` en haut du fichier). Le menu propose **« Vérifier les mises à jour »** : il compare cette version à celle publiée sur le dépôt et indique s'il faut recopier le script. Aucune vérification n'est faite depuis un widget.
 
 ## Réglages
 
@@ -78,6 +90,7 @@ Sur l'**écran verrouillé**, le widget affiche toujours le prochain cours et sa
 | `SYNC_CALENDAR` | `true` | Copier les cours dans le calendrier iPhone |
 | `CALENDAR_NAME` | `"Cours CY"` | Nom du calendrier créé |
 | `THEME` | `"auto"` | `"auto"`, `"dark"` ou `"light"` |
+| `MAX_REMINDERS` | `30` | Plafond de rappels en attente (iOS en autorise 64 pour tout Scriptable) |
 | `RENAME` | `{}` | Renommer une matière : `"I2GSIM07": "Statistiques"` |
 | `TYPE_COLORS` | — | Couleurs par type de cours (1re règle qui correspond) |
 
@@ -86,6 +99,8 @@ Sur l'**écran verrouillé**, le widget affiche toujours le prochain cours et sa
 Lancer le script depuis Scriptable ouvre un menu :
 
 - aperçus (grand / moyen / petit widget, vue semaine, prochain cours, écran verrouillé) ;
+- **Démo · …** : les mêmes aperçus avec l'emploi du temps fictif ;
+- **Vérifier les mises à jour** ;
 - **Changer mes identifiants** ;
 - **Tester les notifications** (déclenche la demande d'autorisation iOS) ;
 - **Données brutes (debug)** : JSON des premiers cours, utile pour comprendre un affichage bizarre.
