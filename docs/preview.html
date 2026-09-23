@@ -1,0 +1,555 @@
+<title>Aperçus du widget CELCAT</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,300;0,6..12,400;0,6..12,600;0,6..12,700&display=swap">
+<style>
+  /* Palette de la page (chrome) — suit le thème du lecteur */
+  :root {
+    --u: 2px;                       /* 1 point iOS = 2 px : rendu net pour les captures */
+    --page-bg: #F4F3F8;
+    --page-ink: #23202B;
+    --page-sub: #6B6678;
+    --page-line: #E2DFEA;
+    --page-card: #FFFFFF;
+    --font: "Nunito Sans", "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page-bg: #17141D;
+      --page-ink: #EDEAF3;
+      --page-sub: #9A93A8;
+      --page-line: #2C2735;
+      --page-card: #1E1A26;
+    }
+  }
+  :root[data-theme="dark"] {
+    --page-bg: #17141D;
+    --page-ink: #EDEAF3;
+    --page-sub: #9A93A8;
+    --page-line: #2C2735;
+    --page-card: #1E1A26;
+  }
+
+  body {
+    margin: 0;
+    background: var(--page-bg);
+    color: var(--page-ink);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  .wrap { max-width: 1860px; margin: 0 auto; padding: 0 20px 72px; }
+
+  header.intro { padding-block: 48px 28px; max-width: 62ch; }
+  header.intro h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 700; margin: 0 0 10px; letter-spacing: -0.02em; text-wrap: balance; }
+  header.intro p { margin: 0 0 6px; color: var(--page-sub); }
+  header.intro code { font-size: 0.92em; background: var(--page-line); padding: 1px 6px; border-radius: 5px; }
+
+  .panel-title { display: flex; align-items: baseline; gap: 12px; margin: 40px 0 14px; }
+  .panel-title h2 { font-size: 19px; font-weight: 700; margin: 0; }
+  .panel-title span { color: var(--page-sub); font-size: 14px; }
+
+  /* Fonds des panneaux : ce sont des "photos", ils ne suivent pas le thème du lecteur */
+  .panel { border-radius: 22px; padding: 34px 30px; overflow-x: auto; }
+  .panel.light { background: linear-gradient(135deg, #E9EAF7 0%, #EFEAF4 45%, #F6E7ED 100%); }
+  .panel.dark  { background: linear-gradient(135deg, #1B1230 0%, #2C1A45 55%, #3A2350 100%); }
+
+  .row { display: flex; gap: 30px; align-items: flex-start; flex-wrap: wrap; }
+  .col { display: flex; flex-direction: column; gap: 30px; }
+  .tile { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .tile .caption { font-size: 14px; font-weight: 600; }
+  .light .caption { color: #6C6880; }
+  .dark  .caption { color: #B3A9C6; }
+
+  /* ---------- widget ---------- */
+  .w {
+    box-sizing: border-box;
+    font-family: var(--font);
+    background: var(--bg);
+    border-radius: calc(20 * var(--u));
+    box-shadow: 0 calc(6 * var(--u)) calc(18 * var(--u)) rgba(20, 14, 40, 0.16);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Tokens repris tels quels de STYLE dans celcat-widget.js */
+  .scope-light {
+    --bg: #F2F2F7; --card: #FFFFFF; --text: #111114; --sub: #3C3C43; --muted: #8A8A8E;
+    --now: #1E9E47; --now-bg: #E3F5E8; --cancel: #D95A00; --now-line: #FF3B30;
+    --today-col: rgba(0, 0, 0, 0.05);
+  }
+  .scope-dark {
+    --bg: #131418; --card: #1E1F24; --text: #FFFFFF; --sub: #D4D4DA; --muted: #8E8E96;
+    --now: #34C759; --now-bg: #182A1F; --cancel: #FF9F0A; --now-line: #FF453A;
+    --today-col: rgba(255, 255, 255, 0.05);
+  }
+
+  .w-large { width: calc(338 * var(--u)); height: calc(354 * var(--u)); padding: calc(12 * var(--u)); }
+  .w-medium { width: calc(338 * var(--u)); height: calc(158 * var(--u)); padding: calc(12 * var(--u)); }
+  .w-small { width: calc(158 * var(--u)); height: calc(158 * var(--u)); padding: calc(10 * var(--u)); }
+  .w-small.pad12 { padding: calc(12 * var(--u)); }
+
+  .head { display: flex; align-items: center; gap: calc(6 * var(--u)); }
+  .head .label { font-weight: 600; color: var(--text); font-size: calc(15 * var(--u)); }
+  .w-small .head .label { font-size: calc(13 * var(--u)); }
+  .head .date { color: var(--muted); font-size: calc(12 * var(--u)); }
+  .head .soft { color: var(--muted); font-size: calc(11 * var(--u)); }
+  .head .count { margin-left: auto; color: var(--muted); font-size: calc(11 * var(--u)); }
+
+  .stack { display: flex; flex-direction: column; }
+
+  /* carte de cours : barre de type, horaires, infos à droite */
+  .card {
+    display: flex; align-items: center; box-sizing: border-box;
+    background: var(--card);
+    border: calc(1.5 * var(--u)) solid var(--accent);
+    border-radius: calc(11 * var(--u));
+    padding: calc(5 * var(--u)) calc(6 * var(--u)) calc(5 * var(--u)) calc(10 * var(--u));
+  }
+  .card.live { background: var(--now-bg); border-color: var(--now); border-width: calc(2 * var(--u)); }
+  .card.done .bar, .card.done .times, .card.done .info .t, .card.done .info .s { opacity: 0.4; }
+  .card .bar { width: calc(3 * var(--u)); border-radius: calc(1.5 * var(--u)); background: var(--accent); margin-right: calc(8 * var(--u)); }
+  .card .times {
+    width: calc(38 * var(--u)); display: flex; flex-direction: column; justify-content: space-between;
+    color: var(--text); font-size: calc(12 * var(--u)); margin-right: calc(6 * var(--u));
+  }
+  .card .info { flex: 1; display: flex; flex-direction: column; align-items: flex-end; text-align: right; min-width: 0; }
+  .card .info .t { font-weight: 600; font-size: calc(12 * var(--u)); color: var(--text); white-space: nowrap; }
+  .card.live .info .t { color: var(--now); }
+  .card .info .s { font-size: calc(10.5 * var(--u)); color: var(--sub); white-space: nowrap; }
+  .card .info .cancelled { font-weight: 600; font-size: calc(10.5 * var(--u)); color: var(--cancel); }
+  .card .bar-h44 { height: calc(44 * var(--u)); }
+  .card .times-h44 { height: calc(44 * var(--u)); }
+
+  /* bandeau journée entière (férié, vacances) */
+  .allday {
+    display: flex; align-items: center; box-sizing: border-box;
+    border-radius: calc(7 * var(--u));
+    padding: calc(4 * var(--u)) calc(8 * var(--u));
+  }
+  .allday .t { font-weight: 600; font-size: calc(11 * var(--u)); }
+  .allday .d { margin-left: auto; color: var(--muted); font-size: calc(10 * var(--u)); }
+
+  /* carte "en direct" du petit widget */
+  .live-card {
+    display: flex; align-items: center; box-sizing: border-box;
+    background: var(--card);
+    border: calc(1.5 * var(--u)) solid var(--accent);
+    border-radius: calc(9 * var(--u));
+    padding: calc(5 * var(--u)) calc(6 * var(--u));
+  }
+  .live-card.now { background: var(--now-bg); border-color: var(--now); border-width: calc(2 * var(--u)); }
+  .live-card .bar { width: calc(3 * var(--u)); border-radius: calc(1.5 * var(--u)); background: var(--accent); margin-right: calc(6 * var(--u)); }
+  .live-card .col2 { display: flex; flex-direction: column; min-width: 0; }
+  .live-card .t { font-weight: 600; font-size: calc(11 * var(--u)); color: var(--text); white-space: nowrap; }
+  .live-card .meta { font-size: calc(10 * var(--u)); color: var(--sub); white-space: nowrap; }
+  .live-card .meta b { color: var(--text); font-weight: 600; }
+  .live-card .status { font-size: calc(10 * var(--u)); color: var(--now); white-space: nowrap; }
+
+  /* carte dense : widget moyen à 3 cours */
+  .dense {
+    display: flex; align-items: center; box-sizing: border-box;
+    background: var(--card);
+    border: calc(1.5 * var(--u)) solid var(--accent);
+    border-radius: calc(11 * var(--u));
+    padding: calc(5 * var(--u)) calc(6 * var(--u)) calc(5 * var(--u)) calc(10 * var(--u));
+    height: calc(32 * var(--u));
+  }
+  .dense .bar { width: calc(3 * var(--u)); height: calc(22 * var(--u)); border-radius: calc(1.5 * var(--u)); background: var(--accent); margin-right: calc(8 * var(--u)); }
+  .dense .h { font-size: calc(11 * var(--u)); color: var(--text); margin-right: calc(6 * var(--u)); }
+  .dense .t { font-weight: 600; font-size: calc(11.5 * var(--u)); color: var(--text); white-space: nowrap; }
+  .dense .r { margin-left: auto; font-size: calc(10 * var(--u)); color: var(--sub); white-space: nowrap; }
+  .dense .cancelled { margin-left: auto; font-weight: 600; font-size: calc(10 * var(--u)); color: var(--cancel); }
+
+  /* prochain cours */
+  .next-head { display: flex; align-items: center; gap: calc(6 * var(--u)); }
+  .pill { border-radius: calc(4 * var(--u)); padding: calc(1 * var(--u)) calc(5 * var(--u)); color: #fff; font-weight: 600; font-size: calc(9 * var(--u)); }
+  .next-head .lbl { color: var(--muted); font-size: calc(11 * var(--u)); }
+  .next-body { margin-top: auto; display: flex; flex-direction: column; }
+  .next-body .module { font-weight: 600; font-size: calc(15 * var(--u)); color: var(--text); line-height: 1.15; }
+  .next-body .room { font-weight: 600; font-size: calc(24 * var(--u)); color: var(--text); line-height: 1.15; margin-top: calc(2 * var(--u)); }
+  .next-body .when { font-size: calc(12 * var(--u)); color: var(--sub); margin-top: calc(4 * var(--u)); }
+
+  /* vue semaine */
+  .week-head { display: flex; align-items: baseline; height: calc(20 * var(--u)); }
+  .week-head .t { font-weight: 600; font-size: calc(15 * var(--u)); color: var(--text); }
+  .week-head .c { margin-left: auto; color: var(--muted); font-size: calc(11 * var(--u)); }
+  .days { display: flex; height: calc(14 * var(--u)); }
+  .days .axis-gap { width: calc(16 * var(--u)); flex: none; }
+  .day-cell {
+    margin-left: calc(3 * var(--u)); border-radius: calc(4 * var(--u));
+    display: flex; align-items: center; justify-content: center;
+    font-size: calc(9 * var(--u)); color: var(--sub);
+  }
+  .day-cell.today { background: var(--text); color: var(--bg); font-weight: 600; }
+  .day-cell.off { font-weight: 600; }
+  .day-cell.past { color: var(--muted); }
+  .grid { display: flex; }
+  .grid .axis { width: calc(16 * var(--u)); flex: none; position: relative; }
+  .grid .axis span { position: absolute; left: 0; font-size: calc(7 * var(--u)); color: var(--muted); }
+  .grid .col-day { margin-left: calc(3 * var(--u)); position: relative; border-radius: calc(5 * var(--u)); }
+  .grid .col-day.today { background: var(--today-col); }
+  .block {
+    position: absolute; left: 0; right: 0; box-sizing: border-box;
+    border-radius: calc(5 * var(--u));
+    padding: calc(2 * var(--u)) calc(2 * var(--u)) calc(2 * var(--u)) calc(3 * var(--u));
+    overflow: hidden;
+  }
+  .block .t { font-weight: 600; font-size: calc(8 * var(--u)); color: var(--text); line-height: 1.15;
+               display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .block.live .t { color: var(--now); }
+  .block .r { font-size: calc(7 * var(--u)); color: var(--sub); line-height: 1.2; }
+  .block .cancelled { font-weight: 600; font-size: calc(7 * var(--u)); color: var(--cancel); }
+  .block.done { opacity: 0.4; }
+  .now-line { position: absolute; left: 0; right: 0; height: calc(1.5 * var(--u)); border-radius: calc(0.75 * var(--u)); background: var(--now-line); }
+
+  /* ---------- écran verrouillé ---------- */
+  .panel.lock { background: linear-gradient(160deg, #2C3A78 0%, #5B4A9B 52%, #C7708A 100%); display: flex; justify-content: center; }
+  .lockscreen {
+    width: calc(320 * var(--u)); padding: calc(26 * var(--u)) calc(22 * var(--u)) calc(30 * var(--u));
+    color: #fff; display: flex; flex-direction: column; align-items: center;
+  }
+  .lock-inline { font-size: calc(12 * var(--u)); opacity: 0.95; letter-spacing: 0.01em; }
+  .lock-clock { font-size: calc(76 * var(--u)); font-weight: 300; line-height: 1.05; letter-spacing: -0.02em; margin: calc(6 * var(--u)) 0 calc(14 * var(--u)); }
+  .lock-row { display: flex; align-items: center; gap: calc(18 * var(--u)); width: 100%; }
+  .lock-rect { display: flex; flex-direction: column; }
+  .lock-rect .s { font-weight: 600; font-size: calc(13 * var(--u)); }
+  .lock-rect .m { font-size: calc(13 * var(--u)); }
+  .lock-rect .r { font-weight: 700; font-size: calc(15 * var(--u)); }
+  .lock-circ {
+    margin-left: auto; width: calc(72 * var(--u)); height: calc(72 * var(--u)); border-radius: 50%;
+    background: rgba(255, 255, 255, 0.24);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .lock-circ .h { font-weight: 700; font-size: calc(14 * var(--u)); }
+  .lock-circ .r { font-size: calc(11 * var(--u)); }
+
+  footer { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--page-line); color: var(--page-sub); font-size: 14px; }
+  footer a { color: inherit; }
+
+  @media (max-width: 1500px) { :root { --u: 1.5px; } }
+  @media (max-width: 760px) { :root { --u: 1.1px; } .panel { padding: 22px 18px; } }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="intro">
+    <h1>Aperçus du widget CELCAT</h1>
+    <p>Rendu du widget <code>cy-edt-widget</code> pour Scriptable : mêmes tailles, mêmes couleurs et mêmes espacements que le script — vue journée, vue semaine, petit widget en direct, prochain cours et écran verrouillé.</p>
+    <p>Emploi du temps fictif : cours, salles et enseignants inventés.</p>
+  </header>
+
+  <div class="panel-title"><h2>Mode clair</h2><span>jeudi 24 septembre, 13:40</span></div>
+  <section class="panel light" id="panel-light"></section>
+
+  <div class="panel-title"><h2>Mode sombre</h2><span>les mêmes widgets, thème sombre de l'iPhone</span></div>
+  <section class="panel dark" id="panel-dark"></section>
+
+  <div class="panel-title"><h2>Écran verrouillé</h2><span>bandeau au-dessus de l'heure, rectangle et rond</span></div>
+  <section class="panel lock" id="panel-lock"></section>
+
+  <footer>
+    Aperçus régénérables : ouvrir <code>docs/preview.html</code> dans un navigateur et capturer chaque panneau.
+  </footer>
+</div>
+
+<script>
+  // Couleurs par type de cours — identiques à TYPE_COLORS dans celcat-widget.js
+  const TYPE = { CM: "#FF3B30", TD: "#0A84FF", TP: "#34C759", Examen: "#FF9500" };
+
+  // Jeudi 24 septembre, il est 13:40 : Anglais vient de finir, Statistiques arrive.
+  const NOW = 13 * 60 + 40;
+  const DAY = [
+    { cat: "TD", mod: "Économie",      start: "08:30", end: "10:00", staff: "DUBOIS PAUL", room: "FER FT202" },
+    { cat: "CM", mod: "Test logiciel", start: "10:15", end: "11:45", staff: "", room: "", cancelled: true },
+    { cat: "TD", mod: "Anglais",       start: "12:00", end: "13:30", staff: "SMITH JANE, LEROY EMMA", room: "FER FT310" },
+    { cat: "TD", mod: "Statistiques",  start: "15:00", end: "16:30", staff: "MARTIN CLAIRE", room: "FER FT202" },
+  ];
+
+  const WEEK = {
+    "Lun 21": [
+      { cat: "CM", mod: "Statistiques",      start: "08:30", end: "10:00", room: "FER AMPHI B" },
+      { cat: "TD", mod: "Économie",          start: "10:15", end: "11:45", room: "FER FT202" },
+      { cat: "TD", mod: "Projet",            start: "13:00", end: "14:30", room: "FER FT310" },
+      { cat: "CM", mod: "Bases de données",  start: "16:30", end: "18:00", room: "FER AMPHI B" },
+    ],
+    "Mar 22": [
+      { cat: "CM", mod: "Cybersécurité",     start: "09:00", end: "10:30", room: "FER AMPHI A" },
+      { cat: "TD", mod: "IA : Théorie",      start: "10:45", end: "12:15", room: "FER FT202" },
+      { cat: "TD", mod: "Test logiciel",     start: "14:00", end: "15:30", room: "FER FT105" },
+    ],
+    "Mer 23": [],
+    "Jeu 24": [
+      { cat: "TD", mod: "Économie",          start: "08:30", end: "10:00", room: "FER FT202" },
+      { cat: "CM", mod: "Test logiciel",     start: "10:15", end: "11:45", room: "", cancelled: true },
+      { cat: "TD", mod: "Anglais",           start: "12:00", end: "13:30", room: "FER FT310" },
+      { cat: "TD", mod: "Statistiques",      start: "15:00", end: "16:30", room: "FER FT202" },
+    ],
+    "Ven 25": [
+      { cat: "TD", mod: "IA : Théorie",      start: "08:30", end: "10:00", room: "FER FT202" },
+      { cat: "TD", mod: "Cybersécurité",     start: "10:15", end: "11:45", room: "FER FT105" },
+      { cat: "TD", mod: "Conception Systèmes", start: "13:00", end: "14:30", room: "FER FT105" },
+      { cat: "TD", mod: "Test logiciel",     start: "15:00", end: "16:30", room: "FER FT105" },
+      { cat: "CM", mod: "IA : Théorie",      start: "16:45", end: "18:00", room: "FER AMPHI B" },
+    ],
+  };
+  const HOLIDAY = "Mer 23";                      // journée entière : colonne teintée
+  const TODAY = "Jeu 24";
+
+  const mins = t => +t.slice(0, 2) * 60 + +t.slice(3);
+  const color = e => TYPE[e.cat] || "#0A84FF";
+  const title = e => `${e.cat} - ${e.mod}`;
+  const el = (tag, cls, txt) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (txt !== undefined) n.textContent = txt;
+    return n;
+  };
+  const px = n => `calc(${n} * var(--u))`;
+
+  function widget(scope, kind) {
+    const w = el("div", `w w-${kind} scope-${scope}`);
+    return w;
+  }
+
+  // ---------- vue journée (grand widget) ----------
+  function buildDay(scope) {
+    const w = widget(scope, "large");
+    const head = el("div", "head");
+    head.append(el("span", "label", "Aujourd'hui"), el("span", "date", "jeu. 24 sept."), el("span", "count", "3 cours"));
+    w.append(head);
+
+    const stack = el("div", "stack");
+    stack.style.marginTop = px(8);
+    stack.style.gap = px(5);
+    DAY.forEach(e => {
+      const done = mins(e.end) <= NOW || e.cancelled;
+      const live = !e.cancelled && mins(e.start) <= NOW && mins(e.end) > NOW;
+      const card = el("div", "card" + (done ? " done" : "") + (live ? " live" : ""));
+      card.style.setProperty("--accent", color(e));
+      card.append(el("div", "bar bar-h44"));
+      const times = el("div", "times times-h44");
+      times.append(el("span", "", e.start), el("span", "", e.end));
+      card.append(times);
+      const info = el("div", "info");
+      info.append(el("span", "t", title(e)));
+      if (e.cancelled) info.append(el("span", "cancelled", "Annulé"));
+      else {
+        if (e.staff) info.append(el("span", "s", e.staff));
+        if (e.room) info.append(el("span", "s", e.room));
+      }
+      card.append(info);
+      stack.append(card);
+    });
+    w.append(stack);
+    return w;
+  }
+
+  // ---------- vue journée avec férié (grand widget) ----------
+  function buildHoliday(scope) {
+    const w = widget(scope, "large");
+    const head = el("div", "head");
+    head.append(el("span", "label", "Mercredi 23 septembre"));
+    w.append(head);
+
+    const banner = el("div", "allday");
+    banner.style.background = "rgba(255, 149, 0, 0.16)";
+    const bt = el("span", "t", "Férié - Jour férié");
+    bt.style.color = "#FF9500";
+    banner.append(bt, el("span", "d", "journée"));
+    banner.style.marginTop = px(8);
+    w.append(banner);
+
+    const none = el("div", "", "Pas de cours 🎉");
+    none.style.cssText = `margin-top:${px(10)};font-size:${px(13)};color:var(--muted)`;
+    w.append(none);
+    return w;
+  }
+
+  // ---------- vue semaine (grand widget) ----------
+  function buildWeek(scope) {
+    const w = widget(scope, "large");
+    const head = el("div", "week-head");
+    head.append(el("span", "t", "Semaine du 21 sept."), el("span", "c", "15 cours"));
+    w.append(head);
+
+    const startMin = 8 * 60, endMin = 18 * 60;
+    const gridH = 354 - 24 - 20 - 6 - 14 - 4;          // hauteur exacte de la grille, en points
+    const scale = gridH / (endMin - startMin);
+    const colW = Math.floor((338 - 24 - 16 - 5 * 3) / 5);
+    const days = Object.keys(WEEK);
+
+    const dayRow = el("div", "days");
+    dayRow.style.marginTop = px(6);
+    dayRow.append(el("div", "axis-gap"));
+    days.forEach(d => {
+      const past = days.indexOf(d) < days.indexOf(TODAY);
+      const cell = el("div", "day-cell" + (d === TODAY ? " today" : d === HOLIDAY ? " off" : past ? " past" : ""), d);
+      cell.style.width = px(colW);
+      if (d === HOLIDAY) { cell.style.background = "rgba(255, 149, 0, 0.16)"; cell.style.color = "#FF9500"; }
+      dayRow.append(cell);
+    });
+    w.append(dayRow);
+
+    const grid = el("div", "grid");
+    grid.style.marginTop = px(4);
+    grid.style.height = px(gridH);
+    const axis = el("div", "axis");
+    for (let m = startMin; m < endMin; m += 60) {
+      const s = el("span", "", `${m / 60}h`);
+      s.style.top = px(Math.round((m - startMin) * scale));
+      axis.append(s);
+    }
+    grid.append(axis);
+
+    days.forEach(d => {
+      const col = el("div", "col-day" + (d === TODAY ? " today" : ""));
+      col.style.width = px(colW);
+      WEEK[d].forEach(e => {
+        const top = Math.round((mins(e.start) - startMin) * scale);
+        const h = Math.max(10, Math.round((mins(e.end) - startMin) * scale) - top);
+        const past = days.indexOf(d) < days.indexOf(TODAY) || (d === TODAY && mins(e.end) <= NOW);
+        const live = d === TODAY && !e.cancelled && mins(e.start) <= NOW && mins(e.end) > NOW;
+        const done = past || e.cancelled;
+        const b = el("div", "block" + (done ? " done" : "") + (live ? " live" : ""));
+        b.style.top = px(top);
+        b.style.height = px(h);
+        b.style.background = live ? "var(--now-bg)" : hexA(color(e), done ? 0.08 : 0.2);
+        b.style.border = `${px(live ? 1.5 : 1)} solid ${live ? "var(--now)" : hexA(color(e), done ? 0.3 : 0.9)}`;
+        b.append(el("div", "t", e.mod));
+        if (h >= 24) {
+          if (e.cancelled) b.append(el("div", "cancelled", "Annulé"));
+          else if (e.room) b.append(el("div", "r", e.room));
+        }
+        col.append(b);
+      });
+      // Trait "maintenant" : seulement aujourd'hui, et seulement dans un trou
+      if (d === TODAY) {
+        const busy = WEEK[d].some(e => mins(e.start) <= NOW && mins(e.end) > NOW);
+        if (!busy) {
+          const line = el("div", "now-line");
+          line.style.top = px(Math.round((NOW - startMin) * scale));
+          col.append(line);
+        }
+      }
+      grid.append(col);
+    });
+    w.append(grid);
+    return w;
+  }
+
+  // ---------- petit widget en direct ----------
+  function buildLive(scope) {
+    const w = widget(scope, "small");
+    const head = el("div", "head");
+    head.append(el("span", "label", "Aujourd'hui"), el("span", "soft", "· à venir"));
+    w.append(head);
+
+    const stack = el("div", "stack");
+    stack.style.marginTop = px(6);
+    stack.style.gap = px(4);
+    const upcoming = [DAY[2], DAY[3]];
+    upcoming.forEach((e, i) => {
+      const live = mins(e.start) <= NOW && mins(e.end) > NOW;
+      const card = el("div", "live-card" + (live ? " now" : ""));
+      card.style.setProperty("--accent", color(e));
+      const bar = el("div", "bar");
+      bar.style.height = px(live && i === 0 ? 40 : 28);
+      card.append(bar);
+      const col = el("div", "col2");
+      col.append(el("div", "t", title(e)));
+      const meta = el("div", "meta");
+      meta.append(document.createTextNode(`${e.start} · `), el("b", "", e.room));
+      col.append(meta);
+      if (live && i === 0) col.append(el("div", "status", `En cours · fin ${e.end}`));
+      card.append(col);
+      stack.append(card);
+    });
+    w.append(stack);
+    return w;
+  }
+
+  // ---------- prochain cours (petit widget) ----------
+  function buildNext(scope) {
+    const w = widget(scope, "small pad12");
+    const e = DAY[3];
+    const head = el("div", "next-head");
+    const pill = el("span", "pill", e.cat);
+    pill.style.background = color(e);
+    head.append(pill, el("span", "lbl", "Prochain cours"));
+    w.append(head);
+
+    const body = el("div", "next-body");
+    body.append(el("div", "module", e.mod), el("div", "room", e.room), el("div", "when", `${e.start} – ${e.end}`));
+    w.append(body);
+    return w;
+  }
+
+  // ---------- widget moyen (3 cours, une ligne chacun) ----------
+  function buildMedium(scope) {
+    const w = widget(scope, "medium");
+    const head = el("div", "head");
+    head.append(el("span", "label", "Aujourd'hui"), el("span", "date", "jeu. 24 sept."), el("span", "count", "3 cours"));
+    w.append(head);
+
+    const stack = el("div", "stack");
+    stack.style.marginTop = px(8);
+    stack.style.gap = px(5);
+    [DAY[1], DAY[2], DAY[3]].forEach(e => {
+      const live = !e.cancelled && mins(e.start) <= NOW && mins(e.end) > NOW;
+      const done = mins(e.end) <= NOW || e.cancelled;
+      const card = el("div", "dense" + (done ? " done" : "") + (live ? " live" : ""));
+      card.style.setProperty("--accent", color(e));
+      if (live) { card.style.background = "var(--now-bg)"; card.style.borderColor = "var(--now)"; }
+      if (done) card.style.opacity = "0.4";
+      card.append(el("div", "bar"), el("span", "h", e.start), el("span", "t", title(e)));
+      card.append(e.cancelled ? el("span", "cancelled", "Annulé") : el("span", "r", e.room));
+      stack.append(card);
+    });
+    w.append(stack);
+    return w;
+  }
+
+  function hexA(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  }
+
+  function tile(node, caption) {
+    const t = el("div", "tile");
+    t.append(node, el("div", "caption", caption));
+    return t;
+  }
+
+  function buildPanel(id, scope) {
+    const panel = document.getElementById(id);
+    const row = el("div", "row");
+    row.append(tile(buildDay(scope), "Journée"));
+    row.append(tile(buildWeek(scope), "Semaine"));
+    const col = el("div", "col");
+    col.append(tile(buildLive(scope), "Petit · en direct"), tile(buildNext(scope), "Prochain cours"));
+    row.append(col);
+    panel.append(row);
+
+    const row2 = el("div", "row");
+    row2.style.marginTop = "30px";
+    row2.append(tile(buildMedium(scope), "Moyen · 3 cours"), tile(buildHoliday(scope), "Jour férié"));
+    panel.append(row2);
+  }
+
+  buildPanel("panel-light", "light");
+  buildPanel("panel-dark", "dark");
+
+  // écran verrouillé
+  const lock = document.getElementById("panel-lock");
+  const ls = el("div", "lockscreen");
+  ls.append(el("div", "lock-inline", "15:00 · FER FT202"));
+  ls.append(el("div", "lock-clock", "13:40"));
+  const row = el("div", "lock-row");
+  const rect = el("div", "lock-rect");
+  rect.append(el("div", "s", "15:00 – 16:30"), el("div", "m", "Statistiques"), el("div", "r", "FER FT202"));
+  const circ = el("div", "lock-circ");
+  circ.append(el("div", "h", "15:00"), el("div", "r", "FT202"));
+  row.append(rect, circ);
+  ls.append(row);
+  lock.append(ls);
+</script>
