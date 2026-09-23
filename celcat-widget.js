@@ -15,7 +15,7 @@
 //  - Ajoute un widget Scriptable (grand conseillé) et choisis ce script.
 // ============================================================
 
-const VERSION = "1.2.0";         // version de ce script (comparée à celle du dépôt)
+const VERSION = "1.2.1";         // version de ce script (comparée à celle du dépôt)
 const REPO = "https://github.com/Samito-05/cy-edt-widget";
 const REPO_RAW = "https://raw.githubusercontent.com/Samito-05/cy-edt-widget/main/celcat-widget.js";
 
@@ -39,6 +39,7 @@ const THEME = "auto";            // "auto" (suit l'iPhone), "dark" ou "light"
 const KC_USER = "celcat_user";
 const KC_PASS = "celcat_pass";
 const KC_FID  = "celcat_fid";    // numéro étudiant CELCAT (fid0), saisi ou détecté
+const KC_SALT = "celcat_salt";   // sel aléatoire de l'empreinte (voir credFingerprint)
 let FID = Keychain.contains(KC_FID) ? Keychain.get(KC_FID) : "";
 let AUTH_BAD = false;            // identifiants refusés : plus aucune tentative de connexion
 
@@ -135,13 +136,23 @@ function dayLabel(d) {
 
 // ---------- identifiants ----------
 // Empreinte des identifiants : sert uniquement à repérer qu'ils ont changé.
-// Le mot de passe lui-même ne sort jamais du Trousseau iOS.
+// Le mot de passe ne sort jamais du Trousseau iOS, et l'empreinte écrite sur le
+// disque est salée : sans le sel (qui reste, lui aussi, dans le Trousseau) elle ne
+// permet pas de tester des mots de passe candidats, et ne dit rien de sa longueur.
+function credSalt() {
+  if (!Keychain.contains(KC_SALT)) {
+    Keychain.set(KC_SALT, Math.random().toString(36).slice(2) + Date.now().toString(36));
+  }
+  return Keychain.get(KC_SALT);
+}
+
 function credFingerprint() {
-  const s = (Keychain.contains(KC_USER) ? Keychain.get(KC_USER) : "") + "\u0000" +
+  const s = credSalt() + "\u0000" +
+            (Keychain.contains(KC_USER) ? Keychain.get(KC_USER) : "") + "\u0000" +
             (Keychain.contains(KC_PASS) ? Keychain.get(KC_PASS) : "");
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
-  return h.toString(36) + "." + s.length;
+  return h.toString(36);
 }
 
 // Verrou local. Dès le PREMIER refus d'identifiants, plus aucune tentative de
@@ -456,6 +467,18 @@ function frequentLines(data) {
   return new Set(Object.keys(count).filter(l => data.length >= 2 && count[l] / data.length >= min));
 }
 
+// CELCAT renvoie normalement "#RRGGBB". Une valeur exotique ("rgb(...)", "", un nom
+// de couleur) ferait échouer new Color() et, avec lui, tout le rendu du widget :
+// on ne garde que ce qui est sûr.
+const HEX_RE = /^#?(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+const DEFAULT_COLOR = "#0A84FF";
+
+function hexColor(v) {
+  const s = String(v == null ? "" : v).trim();
+  if (!HEX_RE.test(s)) return DEFAULT_COLOR;
+  return s.startsWith("#") ? s : "#" + s;
+}
+
 function parse(e, frequent) {
   const lines = splitLines(e);
   const category = decode(e.eventCategory || lines[0] || "");
@@ -483,7 +506,7 @@ function parse(e, frequent) {
     module: module || category || "Cours", category,
     staff, room,
     cancelled: isCancelled(category, lines),
-    color: type ? type.color : (e.backgroundColor || "#0A84FF"),
+    color: type ? type.color : hexColor(e.backgroundColor),
   };
 }
 

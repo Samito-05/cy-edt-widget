@@ -23,7 +23,15 @@ class FakeDate extends RealDate {
 }
 global.Date = FakeDate;
 
-class Color { constructor(h, a = 1) { this.hex = h; this.alpha = a; } }
+class Color {
+  constructor(h, a = 1) {
+    // Scriptable n'accepte qu'un hex : on réplique pour que le test voie passer
+    // une couleur exotique renvoyée par CELCAT.
+    if (typeof h !== "string" || !/^#?(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(h))
+      throw new Error("couleur invalide : " + h);
+    this.hex = h; this.alpha = a;
+  }
+}
 Color.dynamic = (l, d) => l;
 Color.orange = () => new Color("#FF9500");
 Color.red = () => new Color("#FF3B30");
@@ -229,6 +237,22 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
   ok("verrou posé dès le 1er refus", fsn.existsSync(AUTHLOCK), "pas de celcat_auth.json");
   ok("verrou sans mot de passe en clair", !JSON.stringify(readLockFile()).includes("pw"),
      fsn.readFileSync(AUTHLOCK, "utf8"));
+  ok("empreinte sans longueur du mot de passe", !/\.\d/.test(readLockFile().fp), readLockFile().fp);
+  ok("sel de l'empreinte gardé dans le Trousseau", !!Keychain.get("celcat_salt"));
+  {   // sans le sel, l'empreinte du disque ne correspond à rien : verrou inutilisable
+    const fp = readLockFile().fp, salt = Keychain.get("celcat_salt");
+    Keychain.set("celcat_salt", "autre-sel");
+    expire();
+    NET = { "/Home/GetCalendarData": JSON.stringify(BASE_EVENTS) };
+    global.netCalls = [];
+    await load();
+    ok("empreinte liée au sel", !fsn.existsSync(AUTHLOCK) || readLockFile().fp !== fp);
+    Keychain.set("celcat_salt", salt);
+    fsn.rmSync(AUTHLOCK, { force: true });
+    NET = { "/Home/GetCalendarData": "<html>login</html>", "/LdapLogin": LOGIN_FORM };
+    expire();
+    await load();                      // on repose un vrai verrou pour la suite
+  }
 
   // --- 4 bis. verrou : plus aucune tentative de connexion tant que rien ne change
   console.log("\n[4b] verrou identifiants");
@@ -421,6 +445,20 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
   await load();
   ok("08:30 affiché tel quel", global.texts().includes("08:30"), JSON.stringify(global.texts()));
 
+  // --- 13 bis. couleur inattendue renvoyée par CELCAT
+  console.log("\n[13b] couleur invalide");
+  for (const bad of ["rgb(255,0,0)", "", null, "red", "#12"]) {
+    const e13 = ev("c1", 1, 9, "Réunion", "Conseil de classe", "FT202");
+    e13.backgroundColor = bad;
+    NET = { "/Home/GetCalendarData": JSON.stringify([e13]) };
+    fsn.rmSync(CACHE, { force: true });
+    let err = null;
+    try { await load(); } catch (x) { err = x; }
+    ok(`rendu malgré backgroundColor ${JSON.stringify(bad)}`,
+       !err && global.texts().some(t => /Conseil/.test(t)),
+       (err && err.message) || JSON.stringify(global.texts()).slice(0, 160));
+  }
+
   // --- 14. comparaison de versions
   console.log("\n[14] mises à jour");
   const widgetSrc = fsn.readFileSync(pathn.join(__dirname, "..", "celcat-widget.js"), "utf8");
@@ -429,7 +467,7 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
   const cmp = new Function(widgetSrc.slice(widgetSrc.indexOf("function versionRank"),
                                            widgetSrc.indexOf("async function checkUpdate")) +
                            "return { versionRank, isNewer };")();
-  ok("1.2.0 > 1.1.0", cmp.isNewer("1.2.0", "1.1.0"));
+  ok("1.2.1 > 1.2.0", cmp.isNewer("1.2.1", "1.2.0"));
   ok("1.1.0 = 1.1.0 → pas de mise à jour", !cmp.isNewer("1.1.0", "1.1.0"));
   ok("1.10.0 > 1.9.0 (comparaison numérique)", cmp.isNewer("1.10.0", "1.9.0"));
   ok("1.0.9 < 1.1.0", !cmp.isNewer("1.0.9", "1.1.0"));
