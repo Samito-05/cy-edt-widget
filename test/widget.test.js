@@ -269,7 +269,7 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
   await load();
   ok("prochain cours ≠ férié", !global.texts().some(t => /Férié/.test(t)), JSON.stringify(global.texts()));
 
-  // --- 10. vue semaine : filets d'heures + trait "maintenant"
+  // --- 10. vue semaine : trait "maintenant"
   console.log("\n[10] vue semaine");
   global.config.widgetFamily = "large"; global.args.widgetParameter = "semaine";
   global.drawn = [];
@@ -280,7 +280,6 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
   ]) };
   fsn.rmSync(CACHE, { force: true });
   await load();
-  ok("filets d'heures dessinés", global.drawn.length >= 3, "rects: " + global.drawn.length);
   const nowBar = global.widget.all().find(i => i.kind === "stack" && i.size && i.size.height === 1.5);
   ok("trait maintenant présent", !!nowBar, "aucune barre de 1.5pt");
 
