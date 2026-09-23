@@ -19,7 +19,7 @@ Tes cours directement sur l'écran d'accueil : horaires, salles, type de cours, 
 - **Rappel** 10 min avant chaque cours, avec la salle.
 - **Synchronisation calendrier** dans un calendrier iPhone dédié (« Cours CY »).
 - **Mode clair / sombre** automatique.
-- **Cache hors ligne** : les données sont réutilisées si le réseau est indisponible, et aucun appel réseau n'est fait la nuit (22h → 7h).
+- **Cache hors ligne** : les données sont réutilisées si le réseau est indisponible, et aucun appel réseau n'est fait la nuit (22h → 7h). En cas d'échec répété (mot de passe changé, serveur HS), les tentatives sont espacées progressivement.
 
 ## Installation
 
@@ -81,7 +81,7 @@ Lancer le script depuis Scriptable ouvre un menu :
 
 1. Connexion via `POST /LdapLogin/Logon` (avec le jeton `__RequestVerificationToken` récupéré sur la page de login).
 2. Récupération des cours via `POST /Home/GetCalendarData` (`resType=104`, `federationIds[]=<numéro étudiant>`), du lundi de la semaine courante jusqu'à `DAYS_AHEAD` jours.
-3. Mise en cache dans `celcat_cache.json` (dossier Scriptable local), avec date de téléchargement et numéro étudiant.
+3. Mise en cache dans `celcat_cache.json` (dossier Scriptable local) : date de téléchargement, numéro étudiant, version de format, et état d'échec éventuel. L'écriture passe par un fichier temporaire, pour ne jamais laisser un cache tronqué.
 4. Affichage, puis, si de nouvelles données ont été téléchargées : diff avec l'ancien planning → notifications, replanification des rappels, mise à jour du calendrier.
 
 Le widget demande à iOS un rafraîchissement au prochain début/fin de cours, et au plus tard après `FETCH_MIN` minutes (iOS reste libre de décaler).
@@ -91,6 +91,7 @@ Le widget demande à iOS un rafraîchissement au prochain début/fin de cours, e
 | Symptôme | Piste |
 |---|---|
 | « Ouvre le script dans Scriptable pour te connecter. » | Lancer le script dans l'app et enregistrer les identifiants. |
+| « Identifiants refusés » | Mot de passe CY changé → « Changer mes identifiants ». Après un refus, le widget espace ses tentatives (15 min → 1 h → 3 h → 6 h) ; ouvrir le script réessaie immédiatement. |
 | Widget vide ou aucun cours | Numéro étudiant (`fid0`) absent ou erroné → le ressaisir via « Changer mes identifiants ». |
 | Une matière s'affiche avec son code | Ajouter une entrée dans `RENAME`. |
 | Pas de notifications | Lancer « Tester les notifications » une fois et autoriser Scriptable dans Réglages iOS. |
