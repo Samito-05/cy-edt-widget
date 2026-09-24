@@ -675,15 +675,20 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
     ok("chaque colonne du jour garde sa hauteur exacte", cols.length >= 5 && cols.every(c => Math.abs(filled(c) - c.size.height) < 0.01),
        JSON.stringify(cols.map(c => [c.size && c.size.height, filled(c)])));
 
-    err = await run([sim("211", 9, 0, 11, 0, "Cours A"), sim("212", 9, 0, 11, 0, "Cours B"),
+    err = await run([sim("211", 9, 0, 11, 0, "Cours A"), { ...sim("212", 9, 0, 11, 0, "Cours B"), eventCategory: "Examen" },
                      sim("213", 9, 30, 10, 30, "Cours C")]);
     const t3 = global.texts();
     ok("3 cours simultanés : 1 affiché + « +2 »", !err && t3.includes("Cours A") && t3.includes("+2") &&
        !t3.includes("Cours B") && !t3.includes("Cours C"), (err && err.message) || JSON.stringify(t3));
     const row3 = global.widget.all().find(i => i.kind === "stack" && !i.vertical &&
-                                             i.items.some(c => c.kind === "stack" && c.items.some(t => t.text === "+2")));
+                                             i.items.some(c => c.kind === "stack" && c.size && c.size.width === 16 && c.all().some(t => t.text === "+2")));
     const lanes3 = row3 ? row3.items.filter(c => c.kind === "stack") : [];
     ok("  2 colonnes seulement (lisibles)", lanes3.length === 2, lanes3.length + " colonnes");
+    ok("  « +N » en bande étroite, le cours garde la largeur",
+       lanes3.length === 2 && lanes3[1].size.width < 20 && lanes3[0].size.width > 2 * lanes3[1].size.width,
+       JSON.stringify(lanes3.map(l => l.size)));
+    ok("  « +N » aux couleurs du cours caché", lanes3[1] && lanes3[1].borderColor && lanes3[1].borderColor.hex === "#FF9500",
+       JSON.stringify(lanes3[1] && lanes3[1].borderColor));
 
     err = await run([sim("211", 9, 0, 11, 0, "Cours A"), sim("212", 9, 0, 11, 0, "Cours B"),
                      sim("213", 9, 0, 11, 0, "Cours C"), sim("214", 9, 30, 10, 30, "Cours D")]);
