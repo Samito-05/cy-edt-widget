@@ -27,13 +27,15 @@ Tes cours directement sur l'écran d'accueil : horaires, salles, type de cours, 
 
 - **Vue du jour** — cours du jour (ou du prochain jour de cours), cartes sombres/claires avec bordure colorée par type : CM rouge, TD bleu, TP vert, examen orange.
 - **Mode live** (petit widget) — chaque cours disparaît 30 min après son début pour laisser la place au suivant et à sa salle.
-- **Vue semaine** — planning de la semaine sur un grand widget (trait rouge sur l'heure courante), avec possibilité d'afficher les semaines suivantes.
+- **Vue semaine** — planning de la semaine sur un grand widget (trait rouge sur l'heure courante), avec possibilité d'afficher les semaines suivantes. Les cours simultanés (groupes, TP en parallèle) s'affichent côte à côte ; au-delà de 3, un bloc « +N » résume le reste.
 - **Prochain cours** — seulement le cours suivant et sa salle ; c'est aussi l'affichage automatique sur l'écran verrouillé.
 - **Cours annulés** grisés au lieu d'être masqués ; **fériés et vacances** affichés en bandeau, sans horaire ni rappel.
 - **Notifications** si l'emploi du temps change (salle, horaire, annulation, ajout) sur les 7 prochains jours.
 - **Rappel** 10 min avant chaque cours, avec la salle.
 - **Synchronisation calendrier** dans un calendrier iPhone dédié (« Cours CY »).
 - **Mode clair / sombre** automatique.
+- **Cours masqués** : une option non suivie ou le cours d'un autre groupe disparaît partout (widget, rappels, calendrier) via `HIDE`.
+- **Siri / Raccourcis** : un raccourci qui exécute le script répond en texte avec le prochain cours et sa salle, ou la journée entière.
 - **Cache hors ligne** : les données sont réutilisées si le réseau est indisponible, et aucun appel réseau n'est fait la nuit (22h → 7h). En cas de panne réseau ou serveur, les tentatives sont espacées progressivement.
 - **Protection du compte CY** : si CELCAT refuse les identifiants, le widget s'arrête **dès la première tentative** et ne renvoie plus jamais le mot de passe — sinon il le rejouerait toutes les 15 min et l'annuaire CY finirait par bloquer le compte. L'emploi du temps déjà téléchargé reste affiché, avec le badge « identifiants ✗ ». Le verrou saute dès que l'identifiant ou le mot de passe est modifié (ou via « Débloquer et réessayer une fois » dans le menu). Le mot de passe ne part qu'une seule fois même si plusieurs widgets se réveillent ensemble, ou si iOS coupe le script avant la réponse. Et si CELCAT change sa page de connexion au point qu'un refus ne soit plus reconnu, le verrou se pose quand même : après **2 envois non confirmés** (réponse jamais reçue, ou connexion « acceptée » sans qu'aucun cours n'arrive), plus rien ne part.
 
@@ -64,16 +66,32 @@ Appui long sur le widget → **Modifier le widget** → champ `Parameter` :
 | `semaine` | Vue semaine (grand widget) |
 | `semaine 1` | Semaine suivante (`semaine 2`, etc.) |
 | `prochain` | Uniquement le prochain cours et sa salle |
-| `demo` | Emploi du temps fictif, sans réseau (`demo semaine`, `demo prochain`, `demo 1`… fonctionnent aussi) |
 
 Sur l'**écran verrouillé**, le widget affiche toujours le prochain cours et sa salle, quel que soit le paramètre.
 
-## Mode démo
+## Script de démo
 
-Le script embarque un emploi du temps fictif : aucun identifiant, aucun appel réseau, rien d'écrit dans le calendrier, aucune notification. De quoi essayer le widget avant de se connecter — et faire des captures sans exposer son vrai planning.
+[`celcat-demo.js`](celcat-demo.js) est un **script Scriptable à part** : même rendu que le vrai widget, mais avec un emploi du temps fictif. Aucun identifiant, aucun appel réseau, rien d'écrit dans le calendrier, aucune notification. De quoi essayer le widget avant de se connecter, ou faire des captures sans montrer son vrai planning.
 
-- Dans l'app : lancer le script → entrées **« Démo · … »** (grand, moyen, petit, semaine, prochain cours, écran verrouillé).
-- Sur l'écran d'accueil : appui long → **Modifier le widget** → `Parameter` = `demo` (ou `demo semaine`, `demo prochain`…).
+- L'installer comme le vrai script (par ex. sous le nom `EDT CY démo`). Le lancer dans l'app ouvre un menu d'aperçus.
+- Sur l'écran d'accueil, les paramètres sont les mêmes (`semaine`, `prochain`, `1`…).
+
+Ce fichier est **généré** à partir de `celcat-widget.js` et de `tools/demo-data.js` : ne pas le modifier à la main. Après un changement du script principal :
+
+```sh
+node tools/build-demo.js
+```
+
+Les tests échouent si `celcat-demo.js` n'est pas à jour.
+
+## Siri et Raccourcis
+
+Le script répond en texte quand il est lancé par Siri ou par l'action **« Exécuter le script »** de l'app Raccourcis :
+
+- sans paramètre : « Prochain cours : Statistiques (TD), aujourd'hui à 13:00, salle FER FT202. » ;
+- paramètre `jour` : « Aujourd'hui : 08:30 Statistiques (FER FT202), 10:15 Économie (FER FT101). »
+
+Le texte peut ensuite servir dans un raccourci (le lire à voix haute, l'envoyer par message…). Siri utilise les données en mémoire quand elles sont récentes, sinon il les retélécharge, avec les mêmes règles que le widget (nuit, backoff, verrou d'identifiants).
 
 ## Mises à jour
 
@@ -99,6 +117,7 @@ Le script porte un numéro de version (`const VERSION` en haut du fichier). Le m
 | `THEME` | `"auto"` | `"auto"`, `"dark"` ou `"light"` |
 | `MAX_REMINDERS` | `30` | Plafond de rappels en attente (iOS en autorise 64 pour tout Scriptable) |
 | `RENAME` | `{}` | Renommer une matière : `"I2GSIM07": "Statistiques"` |
+| `HIDE` | `[]` | Cours à masquer partout : texte contenu dans la matière ou le type (`"Allemand"`), ou regex sur « Type - Matière » (`/^TP - Sport/i`) |
 | `TYPE_COLORS` | — | Couleurs par type de cours (1re règle qui correspond) |
 
 ## Menu du script (lancement dans l'app)
@@ -106,7 +125,6 @@ Le script porte un numéro de version (`const VERSION` en haut du fichier). Le m
 Lancer le script depuis Scriptable ouvre un menu :
 
 - aperçus (grand / moyen / petit widget, vue semaine, prochain cours, écran verrouillé) ;
-- **Démo · …** : les mêmes aperçus avec l'emploi du temps fictif ;
 - **Vérifier les mises à jour** ;
 - **Changer mes identifiants** (libère aussi le verrou après un refus) ;
 - **Débloquer et réessayer une fois** (proposé uniquement après un refus d'identifiants) ;
