@@ -15,7 +15,7 @@
 //  - Ajoute un widget Scriptable (grand conseillé) et choisis ce script.
 // ============================================================
 
-const VERSION = "1.2.1";         // version de ce script (comparée à celle du dépôt)
+const VERSION = "1.2.2";         // version de ce script (comparée à celle du dépôt)
 const REPO = "https://github.com/Samito-05/cy-edt-widget";
 const REPO_RAW = "https://raw.githubusercontent.com/Samito-05/cy-edt-widget/main/celcat-widget.js";
 
@@ -111,12 +111,16 @@ const ENTITIES = {
   rsquo: "’", lsquo: "‘", laquo: "«", raquo: "»", hellip: "…", ndash: "–", mdash: "—", deg: "°",
 };
 
+// Code point hors Unicode ("&#99999999;") : fromCodePoint lèverait une RangeError
+// et ferait tomber tout le parsing → on laisse l'entité telle quelle.
+const fromCp = (cp, raw) => cp <= 0x10FFFF ? String.fromCodePoint(cp) : raw;
+
 function decode(s) {
   return String(s ?? "")
     .replace(/<[^>]+>/g, "")
     .replace(/&amp;/g, "&")                                            // gère aussi "&amp;#232;"
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(+d))
+    .replace(/&#x([0-9a-f]+);/gi, (m, h) => fromCp(parseInt(h, 16), m))
+    .replace(/&#(\d+);/g, (m, d) => fromCp(+d, m))
     .replace(/&([a-z]+);/gi, (m, n) => ENTITIES[n] ?? m)
     .replace(/\s+/g, " ").trim();
 }
@@ -162,21 +166,42 @@ function credFingerprint() {
 // Une tentative posée juste avant l'envoi du mot de passe (voir login) expire
 // d'elle-même : elle ne sert qu'à empêcher deux widgets de tenter en même temps,
 // ou à couvrir un essai dont on n'a jamais vu la réponse (iOS coupe le widget).
+//
+// Le refus n'est reconnu qu'à la page de connexion réaffichée : si CELCAT change
+// de page (SSO, maintenance…) un mauvais mot de passe passerait pour accepté.
+// Chaque envoi non confirmé par un emploi du temps reçu (réponse jamais vue,
+// ou connexion « acceptée » mais toujours pas de données) compte donc comme un
+// essai suspect ; au bout de MAX_STRIKES, verrou définitif comme pour un refus.
 const PENDING_TTL_MIN = 10;
+const MAX_STRIKES = 2;
+const UNCONFIRMED_MSG = "Connexion non confirmée par CELCAT — ouvre le script → « Débloquer et réessayer une fois ».";
 
+// États du fichier : { pending } tentative en cours · { blocked, msg } verrou définitif ·
+// sinon simple compteur d'essais suspects ({ strikes }).
 function readAuthLock() {
   try {
     if (!fm.fileExists(AUTHLOCK)) return null;
     const l = JSON.parse(fm.readString(AUTHLOCK));
     if (l.fp !== credFingerprint()) { clearAuthLock(); return null; }   // identifiants modifiés
-    if (l.pending && Date.now() - l.at > PENDING_TTL_MIN * 60000) { clearAuthLock(); return null; }
+    if (l.blocked === undefined) l.blocked = !l.pending && !!l.msg;     // fichier d'une version précédente
+    if (l.pending && Date.now() - l.at > PENDING_TTL_MIN * 60000)       // réponse jamais reçue
+      return addStrike((l.strikes || 0) + 1);
     return l;
   } catch (e) { return null; }
 }
 
-function setAuthLock(msg, pending) {
-  try { fm.writeString(AUTHLOCK, JSON.stringify({ at: Date.now(), fp: credFingerprint(), msg, pending })); }
+function writeAuthLock(l) {
+  try { fm.writeString(AUTHLOCK, JSON.stringify({ at: Date.now(), fp: credFingerprint(), ...l })); }
   catch (e) {}
+}
+
+const setAuthLock = msg => writeAuthLock({ msg, blocked: true });
+
+// Enregistre un essai suspect ; verrouille au-delà de MAX_STRIKES
+function addStrike(strikes) {
+  const l = strikes >= MAX_STRIKES ? { msg: UNCONFIRMED_MSG, blocked: true, strikes } : { strikes };
+  writeAuthLock(l);
+  return { ...l, blocked: !!l.blocked };
 }
 
 function clearAuthLock() {
@@ -211,7 +236,17 @@ async function askCredentials() {
   a.addCancelAction("Annuler");
   if ((await a.present()) === -1) return false;
 
-  Keychain.set(KC_USER, a.textFieldValue(0).trim());
+  // Identifiant ou mot de passe manquant : rien n'est envoyé (un POST vide = un refus = verrou)
+  const user = a.textFieldValue(0).trim();
+  if (!user || (!a.textFieldValue(1) && !Keychain.contains(KC_PASS))) {
+    const warn = new Alert();
+    warn.title = "Identifiants incomplets";
+    warn.message = "Identifiant et mot de passe CY sont obligatoires. Rien n'a été enregistré.";
+    warn.addAction("OK");
+    await warn.present();
+    return false;
+  }
+  Keychain.set(KC_USER, user);
   if (a.textFieldValue(1)) Keychain.set(KC_PASS, a.textFieldValue(1));
 
   // Accepte le numéro seul ou l'adresse complète collée (…&fid0=12345678)
@@ -254,11 +289,17 @@ async function login() {
   }
   // Un refus a déjà eu lieu avec CES identifiants : on n'envoie plus rien.
   const lock = readAuthLock();
-  if (lock) throw credError(lock.msg);
+  if (lock && lock.blocked) throw credError(lock.msg);
+  // Un autre widget est en train de se connecter : ce n'est pas un refus, on attend.
+  if (lock && lock.pending) {
+    const e = new Error("Connexion en cours…");
+    e.transient = true;
+    throw e;
+  }
 
   const page = await request(BASE + "/LdapLogin").loadString();
   const m = page.match(/__RequestVerificationToken[^>]*value="([^"]+)"/);
-  if (!m) return; // pas de formulaire → pas de connexion nécessaire
+  if (!m) return false; // pas de formulaire → pas de connexion nécessaire
 
   const r = request(BASE + "/LdapLogin/Logon");
   r.method = "POST";
@@ -267,7 +308,8 @@ async function login() {
            `&__RequestVerificationToken=${enc(m[1])}`;
   // Verrou posé AVANT l'envoi : même si deux widgets se réveillent ensemble, ou si
   // iOS tue le script avant la réponse, un seul mot de passe part vers CELCAT.
-  setAuthLock("Connexion en cours\u2026", true);
+  const strikes = (lock && lock.strikes) || 0;
+  writeAuthLock({ pending: true, strikes });
   const html = await r.loadString();
   // Identifiants refusés : CELCAT réaffiche le formulaire au lieu de rediriger vers l'agenda
   if (/name="Password"/i.test(html) && /__RequestVerificationToken/.test(html)) {
@@ -275,8 +317,11 @@ async function login() {
     setAuthLock(msg);          // une seule tentative : on s'arrête là
     throw credError(msg);
   }
-  clearAuthLock();             // connexion acceptée
+  // Connexion acceptée en apparence : le verrou ne saute qu'une fois les cours reçus
+  // (voir getEvents), sinon l'envoi compte comme un essai suspect.
+  writeAuthLock({ strikes });
   if (!FID) detectFid(r.response && r.response.url, html);   // après connexion, CELCAT redirige souvent vers …&fid0=…
+  return true;
 }
 
 // Détection auto du numéro étudiant (si non saisi)
@@ -313,7 +358,7 @@ async function fetchEvents() {
     "X-Requested-With": "XMLHttpRequest",
   };
   r.body = `start=${ymd(start)}&end=${ymd(end)}&resType=104&calView=agendaWeek` +
-           `&federationIds%5B%5D=${FID}&colourScheme=3`;
+           `&federationIds%5B%5D=${enc(FID)}&colourScheme=3`;
   const txt = (await r.loadString()).trim();
   if (!txt.startsWith("[")) return null; // page HTML = non connecté
   return JSON.parse(txt);
@@ -371,7 +416,7 @@ async function getEvents(force = false) {
   // Données en mémoire suffisantes ? (nuit, ou téléchargées il y a moins de FETCH_MIN min,
   // ce qui évite aussi que plusieurs widgets téléchargent chacun de leur côté)
   const lock = readAuthLock();
-  AUTH_BAD = !!lock && !lock.pending;
+  AUTH_BAD = !!lock && lock.blocked;
   const cached = readCache();
   const fresh = cached && Date.now() - cached.at < (FETCH_MIN - 1) * 60000;
   if (cached && FID && !force && (fresh || isNight()))
@@ -385,7 +430,7 @@ async function getEvents(force = false) {
   try {
     let data = FID ? await fetchEvents() : null;
     if (!data) {
-      await login();
+      const sent = await login();
       if (!FID) await findFid();
       if (!FID) {
         const err = new Error("Numéro étudiant manquant : ouvre le script → « Changer mes identifiants ».");
@@ -393,8 +438,18 @@ async function getEvents(force = false) {
         throw err;
       }
       data = await fetchEvents();
+      // Mot de passe parti, « accepté », mais toujours pas de cours : essai suspect
+      if (!data && sent) {
+        const l = addStrike(((readAuthLock() || {}).strikes || 0) + 1);
+        if (l.blocked) throw credError(l.msg);
+      }
     }
     if (!data) throw new Error("Connexion refusée (identifiants ?)");
+    // Cours reçus : connexion confirmée, compteur d'essais remis à zéro. Un verrou
+    // définitif reste (session encore ouverte ≠ mot de passe bon), une tentative
+    // d'un autre widget aussi.
+    const l = readAuthLock();
+    if (l && !l.blocked && !l.pending) clearAuthLock();
     // Réponse vide alors qu'on avait des cours à venir → raté du serveur : on garde l'ancienne version
     if (!data.length && cached && cached.data.filter(e => parseDate(e.start) > new Date()).length >= 4)
       throw new Error("Réponse vide du serveur");
@@ -405,13 +460,21 @@ async function getEvents(force = false) {
              prev: cached ? cached.data : null, prevUntil: cached ? cached.until : null };
   } catch (e) {
     if (e.badCredentials) AUTH_BAD = true;
+    // Un autre widget a pu réussir pendant qu'on échouait : on relit le cache au lieu
+    // d'écraser ses données toutes fraîches avec notre vieille copie.
+    const cur = readCache() || cached;
+    if (cur && cached && cur.at > cached.at && !cur.fail)
+      return { data: cur.data, stale: false, fetched: false };
+    // Autre widget en pleine connexion : rien d'anormal, pas de backoff
+    if (e.transient && cur) return { data: cur.data, stale: false, fetched: false };
     // Mot de passe refusé : le verrou a déjà coupé les tentatives ; ce décompte
     // ne sert plus qu'aux pannes réseau / serveur.
-    if (cached) {
-      const count = fail ? fail.count + 1 : (e.badCredentials ? 1 : 0);
-      try { writeCache({ ...cached, fail: { at: Date.now(), count, msg: e.message } }); } catch (err) {}
+    if (cur && !e.transient) {
+      const f = cur.fail;
+      const count = f ? f.count + 1 : (e.badCredentials ? 1 : 0);
+      try { writeCache({ ...cur, fail: { at: Date.now(), count, msg: e.message } }); } catch (err) {}
     }
-    if (!e.fatal && cached) return { data: cached.data, stale: true, error: e.message, fetched: false };
+    if (!e.fatal && cur) return { data: cur.data, stale: true, error: e.message, fetched: false };
     // Identifiants refusés sans rien en mémoire : on affiche l'erreur, pas un plantage
     if (e.badCredentials) return { data: [], stale: true, error: e.message, fetched: false };
     throw e;
@@ -495,7 +558,8 @@ function parse(e, frequent) {
 
   const type = TYPE_COLORS.find(t => t.re.test(category));
   const start = parseDate(e.start);
-  const end = e.end ? parseDate(e.end) : new Date(start.getTime() + 3600000);
+  let end = e.end ? parseDate(e.end) : null;
+  if (!end || isNaN(end) || end < start) end = new Date(start.getTime() + 3600000);
   // Journée entière (férié, vacances, journée d'intégration…) : pas d'horaire à afficher,
   // et surtout pas de rappel « dans 10 min » à minuit.
   const allDay = e.allDay === true || !e.end || (+end - +start) >= 20 * 3600000;
@@ -515,7 +579,12 @@ function isCancelled(category, lines) {
   return /annul|cancel/i.test(category) || lines.some(l => /\bannul|\bcancel/i.test(l));
 }
 
-const parseAll = data => { const f = frequentLines(data); return data.map(e => parse(e, f)); };
+// Cours sans date de début lisible : ignoré (sinon "NaN:NaN", tri et grille cassés)
+const parseAll = data => {
+  const ok = data.filter(e => e && !isNaN(parseDate(e.start)));
+  const f = frequentLines(ok);
+  return ok.map(e => parse(e, f));
+};
 
 // ---------- carte de cours ----------
 // Bandeau fin pour un événement "journée entière" (férié, vacances, journée d'intégration…)
@@ -720,7 +789,7 @@ function buildWidget(events, fam, stale, error, offset = 0) {
   w.backgroundColor = STYLE.bg;
   const p = fam === "small" ? 10 : 12;
   w.setPadding(p, p, p, p);
-  w.url = `${BASE}/cal?vt=agendaDay&dt=${targetDay || ymd(now)}&et=student&fid0=${FID}`;
+  w.url = `${BASE}/cal?vt=agendaDay&dt=${targetDay || ymd(now)}&et=student&fid0=${enc(FID)}`;
 
   // En-tête
   const dayDate = dayEvents[0] ? dayEvents[0].start : now;
@@ -862,6 +931,7 @@ function buildWeekWidget(events, stale, error, weekOffset = 0) {
   if (weekEvents.length) {
     startMin = Math.floor(Math.min(...weekEvents.map(e => mins(e.start))) / 60) * 60;
     endMin = Math.ceil(Math.max(...weekEvents.map(e => mins(e.end))) / 60) * 60;
+    endMin = Math.max(endMin, startMin + 60);   // cours de durée nulle / finissant après minuit
   }
 
   // Géométrie
@@ -875,7 +945,7 @@ function buildWeekWidget(events, stale, error, weekOffset = 0) {
   const w = new ListWidget();
   w.backgroundColor = STYLE.bg;
   w.setPadding(pad, pad, pad, pad);
-  w.url = `${BASE}/cal?vt=agendaWeek&dt=${ymd(monday)}&et=student&fid0=${FID}`;
+  w.url = `${BASE}/cal?vt=agendaWeek&dt=${ymd(monday)}&et=student&fid0=${enc(FID)}`;
 
   // En-tête
   const head = w.addStack();
@@ -992,7 +1062,7 @@ const NOTIFIED = fm.joinPath(fm.documentsDirectory(), "celcat_notified.json");
 const REMIND_PREFIX = "celcat-rappel|";
 const MAX_REMINDERS = 30;        // iOS n'accepte que 64 notifications en attente pour toute l'app Scriptable
 const whenStr = d => `${cap(fmtDate(d, "EEE d").replace(".", ""))} ${hm(d)}`;   // "Jeu 24 13:00"
-const dayUrl = d => `${BASE}/cal?vt=agendaDay&dt=${ymd(d)}&et=student&fid0=${FID}`;
+const dayUrl = d => `${BASE}/cal?vt=agendaDay&dt=${ymd(d)}&et=student&fid0=${enc(FID)}`;
 
 // Compare l'ancien téléchargement (brut) au nouveau (déjà analysé) → changements lisibles
 function diffSchedules(prevRaw, nextEvents, prevUntil, nextUntil) {
@@ -1047,7 +1117,7 @@ async function notifyChanges(changes) {
   n.body = fresh.slice(0, 5).join("\n") + (fresh.length > 5 ? "\n…" : "");
   n.threadIdentifier = "celcat-changements";
   n.sound = "default";
-  n.openURL = `${BASE}/cal?vt=agendaWeek&dt=${ymd(new Date())}&et=student&fid0=${FID}`;
+  n.openURL = `${BASE}/cal?vt=agendaWeek&dt=${ymd(new Date())}&et=student&fid0=${enc(FID)}`;
   await n.schedule();
 }
 
@@ -1165,7 +1235,7 @@ function buildNextWidget(events, fam, stale, error) {
 
   w.refreshAfterDate = nextRefresh(e ? [...(SHOW_COUNTDOWN ? [new Date(e.start.getTime() - 60 * 60000)] : []), e.start,
     new Date(e.start.getTime() + HIDE_AFTER_MIN * 60000), e.end] : []);
-  w.url = `${BASE}/cal?vt=agendaDay&dt=${ymd(e ? e.start : now)}&et=student&fid0=${FID}`;
+  w.url = `${BASE}/cal?vt=agendaDay&dt=${ymd(e ? e.start : now)}&et=student&fid0=${enc(FID)}`;
   if (!lock) { w.backgroundColor = STYLE.bg; w.setPadding(12, 12, 12, 12); }
 
   const text = (stack, s, font, color, lines = 1) => {
@@ -1349,8 +1419,8 @@ let offset = weekParam ? (parseInt(weekParam[2], 10) || 0) : (parseInt(param, 10
 if (family.startsWith("accessory")) view = "next";
 
 if (!config.runsInWidget) {
-  const pend = readAuthLock();
-  const lock = pend && !pend.pending ? pend : null;   // tentative en cours : rien à signaler
+  const auth = readAuthLock();
+  const lock = auth && auth.blocked ? auth : null;   // tentative en cours / simple compteur : rien à signaler
   const actions = [
     ["Aperçu grand widget",               { family: "large",  view: "day" }],
     ["Aperçu widget moyen",               { family: "medium", view: "day" }],
