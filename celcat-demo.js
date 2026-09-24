@@ -11,7 +11,7 @@
 //  Fichier généré par tools/build-demo.js : ne pas modifier à la main.
 // ============================================================
 
-const VERSION = "1.3.1";         // version de ce script (comparée à celle du dépôt)
+const VERSION = "1.3.2";         // version de ce script (comparée à celle du dépôt)
 const REPO = "https://github.com/Samito-05/cy-edt-widget";
 const REPO_RAW = "https://raw.githubusercontent.com/Samito-05/cy-edt-widget/main/celcat-widget.js";
 
@@ -134,10 +134,12 @@ const RENAME = {
 
 // Couleur selon le type de cours (1re règle qui correspond).
 // Teintes système iOS : elles restent lisibles sur fond clair comme sur fond sombre.
+// Le vert est réservé au cours en cours : une couleur verte ici (ou renvoyée par
+// CELCAT) est remplacée par NOT_GREEN, voir courseColor.
 const TYPE_COLORS = [
   { re: /^CM\b|magistral/i,                                color: "#FF3B30" }, // rouge
   { re: /^TD\b|dirig/i,                                    color: "#0A84FF" }, // bleu
-  { re: /^TP\b|pratique/i,                                 color: "#34C759" }, // vert
+  { re: /^TP\b|pratique/i,                                 color: "#AF52DE" }, // violet
   { re: /exam|partiel|\bDS\b|contr[oô]le|soutenance/i,     color: "#FF9500" }, // orange
 ];
 
@@ -604,6 +606,23 @@ function hexColor(v) {
   return s.startsWith("#") ? s : "#" + s;
 }
 
+// Vert = « en cours » (carte verte) : aucun autre cours ne doit s'y confondre.
+const NOT_GREEN = "#AF52DE";     // violet système iOS
+
+function isGreen(hex) {
+  let h = hex.replace("#", "");
+  if (h.length <= 4) h = h.split("").map(c => c + c).join("");       // #RGB(A) → #RRGGBB(AA)
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  if (max < 0.2 || (max - min) / max < 0.25) return false;          // presque noir ou grisâtre
+  const hue = max === g ? 60 * ((b - r) / (max - min) + 2)
+            : max === r ? 60 * (((g - b) / (max - min) + 6) % 6)
+            : 60 * ((r - g) / (max - min) + 4);
+  return hue >= 70 && hue <= 170;                                     // du vert-jaune au vert d'eau
+}
+
+const courseColor = hex => isGreen(hex) ? NOT_GREEN : hex;
+
 function parse(e, frequent) {
   const lines = splitLines(e);
   const category = decode(e.eventCategory || lines[0] || "");
@@ -632,7 +651,7 @@ function parse(e, frequent) {
     module: module || category || "Cours", category,
     staff, room,
     cancelled: isCancelled(category, lines),
-    color: type ? type.color : hexColor(e.backgroundColor),
+    color: courseColor(type ? type.color : hexColor(e.backgroundColor)),
   };
 }
 
