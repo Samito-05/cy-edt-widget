@@ -494,6 +494,10 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
   await load("celcat-demo.js");
   const dt = global.texts();
   ok("démo : cours affichés", dt.some(t => /Statistiques|Anglais|Économie/.test(t)), JSON.stringify(dt).slice(0, 200));
+  ok("démo : pas de lien vers CELCAT au toucher", global.widget.url === undefined, global.widget.url);
+  const demoSrc = fsn.readFileSync(pathn.join(__dirname, "..", "celcat-demo.js"), "utf8");
+  ok("démo : en-tête sans identifiants", /^\/\/ =+\n\/\/  DÉMO/.test(demoSrc) && !/enregistrer tes\s*\n?\/\/\s*identifiants/.test(demoSrc),
+     demoSrc.slice(0, 300));
 
   // menus : la démo n'a que ses aperçus, le vrai script plus aucune entrée « Démo »
   global.config.runsInWidget = false;
@@ -514,6 +518,8 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
   NET = { "/Home/GetCalendarData": JSON.stringify(BASE_EVENTS) };
   fsn.rmSync(CACHE, { force: true });
   await load();
+  ok("vrai script : toucher le widget ouvre CELCAT", /^https:\/\/celcat-calendar\.cyu\.fr\/cal\?.*fid0=12345678$/.test(global.widget.url || ""),
+     global.widget.url);
   ok("vrai script : paramètre « demo » ignoré", !global.texts().some(t => /Économie/.test(t)),
      JSON.stringify(global.texts()).slice(0, 200));
   global.args.widgetParameter = "";

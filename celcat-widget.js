@@ -17,7 +17,7 @@
 //  - Ajoute un widget Scriptable (grand conseillé) et choisis ce script.
 // ============================================================
 
-const VERSION = "1.3.0";         // version de ce script (comparée à celle du dépôt)
+const VERSION = "1.3.1";         // version de ce script (comparée à celle du dépôt)
 const REPO = "https://github.com/Samito-05/cy-edt-widget";
 const REPO_RAW = "https://raw.githubusercontent.com/Samito-05/cy-edt-widget/main/celcat-widget.js";
 
@@ -812,7 +812,8 @@ function buildWidget(events, fam, stale, error, offset = 0) {
   w.backgroundColor = STYLE.bg;
   const p = fam === "small" ? 10 : 12;
   w.setPadding(p, p, p, p);
-  w.url = `${BASE}/cal?vt=agendaDay&dt=${targetDay || ymd(now)}&et=student&fid0=${enc(FID)}`;
+  // Toucher le widget ouvre CELCAT (pas en démo : aucun numéro étudiant, la page serait vide)
+  if (!DEMO) w.url = `${BASE}/cal?vt=agendaDay&dt=${targetDay || ymd(now)}&et=student&fid0=${enc(FID)}`;
 
   // En-tête
   const dayDate = dayEvents[0] ? dayEvents[0].start : now;
@@ -1054,7 +1055,7 @@ function buildWeekWidget(events, stale, error, weekOffset = 0) {
   const w = new ListWidget();
   w.backgroundColor = STYLE.bg;
   w.setPadding(pad, pad, pad, pad);
-  w.url = `${BASE}/cal?vt=agendaWeek&dt=${ymd(monday)}&et=student&fid0=${enc(FID)}`;
+  if (!DEMO) w.url = `${BASE}/cal?vt=agendaWeek&dt=${ymd(monday)}&et=student&fid0=${enc(FID)}`;
 
   // En-tête
   const head = w.addStack();
@@ -1345,7 +1346,7 @@ function buildNextWidget(events, fam, stale, error) {
 
   w.refreshAfterDate = nextRefresh(e ? [...(SHOW_COUNTDOWN ? [new Date(e.start.getTime() - 60 * 60000)] : []), e.start,
     new Date(e.start.getTime() + HIDE_AFTER_MIN * 60000), e.end] : []);
-  w.url = `${BASE}/cal?vt=agendaDay&dt=${ymd(e ? e.start : now)}&et=student&fid0=${enc(FID)}`;
+  if (!DEMO) w.url = `${BASE}/cal?vt=agendaDay&dt=${ymd(e ? e.start : now)}&et=student&fid0=${enc(FID)}`;
   if (!lock) { w.backgroundColor = STYLE.bg; w.setPadding(12, 12, 12, 12); }
 
   const text = (stack, s, font, color, lines = 1) => {
