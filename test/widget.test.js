@@ -683,6 +683,26 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
     global.args.widgetParameter = "";
   }
 
+  // --- 20. vert réservé au cours en cours
+  console.log("\n[20] pas de vert hors cours en cours");
+  {
+    const greens = ["#34C759", "#0f0", "4CD964", "#2E7D32", "#8BC34A"];
+    const evts = greens.map((g, i) => ({ ...ev("g" + i, 1, 8 + 2 * i, "Réunion", "Matière " + i, "FT20" + i), backgroundColor: g }));
+    evts.push({ ...ev("tp", 2, 8, "TP", "Réseaux", "FT305") });
+    evts.push({ ...ev("bl", 2, 11, "Réunion", "Conseil", "FT306"), backgroundColor: "#4B4BFF" });
+    NET = { "/Home/GetCalendarData": JSON.stringify(evts) };
+    fsn.rmSync(CACHE, { force: true });
+    global.config.widgetFamily = "large"; global.args.widgetParameter = "semaine";
+    await load();
+    const colors = global.widget.all().flatMap(i => [i.backgroundColor, i.borderColor, i.textColor])
+                                      .filter(c => c && c.hex).map(c => c.hex.replace("#", "").toUpperCase());
+    const norm = g => g.replace("#", "").toUpperCase();
+    ok("aucune couleur verte de CELCAT reprise", !greens.some(g => colors.includes(norm(g))), JSON.stringify([...new Set(colors)]));
+    ok("verts remplacés par du violet", colors.includes("AF52DE"), JSON.stringify([...new Set(colors)]));
+    ok("couleur non verte conservée", colors.includes("4B4BFF"), JSON.stringify([...new Set(colors)]));
+    global.args.widgetParameter = "";
+  }
+
   // --- 14. comparaison de versions
   console.log("\n[14] mises à jour");
   const widgetSrc = fsn.readFileSync(pathn.join(__dirname, "..", "celcat-widget.js"), "utf8");
