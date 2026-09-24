@@ -198,7 +198,8 @@
   .block .t { font-weight: 600; font-size: calc(8 * var(--u)); color: var(--text); line-height: 1.15;
                display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   .block.live .t { color: var(--now); }
-  .block .r { font-size: calc(7 * var(--u)); color: var(--sub); line-height: 1.2; }
+  .block .r { font-size: calc(7 * var(--u)); color: var(--sub); line-height: 1.2;
+               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .block .cancelled { font-weight: 600; font-size: calc(7 * var(--u)); color: var(--cancel); }
   .block.done { opacity: 0.4; }
   .now-line { position: absolute; left: 0; right: 0; height: calc(1.5 * var(--u)); border-radius: calc(0.75 * var(--u)); background: var(--now-line); }
@@ -294,7 +295,10 @@
     "Ven 25": [
       { cat: "TD", mod: "IA : Théorie",      start: "08:30", end: "10:00", room: "FER FT202" },
       { cat: "TD", mod: "Cybersécurité",     start: "10:15", end: "11:45", room: "FER FT105" },
+      { cat: "TP", mod: "Réseaux",           start: "10:45", end: "12:15", room: "FER FT310" },   // simultané : côte à côte
       { cat: "TD", mod: "Conception Systèmes", start: "13:00", end: "14:30", room: "FER FT105" },
+      { cat: "TP", mod: "Projet",            start: "13:00", end: "14:30", room: "FER FT310" },   // 3 cours simultanés : 1 + « +2 »
+      { cat: "Examen", mod: "Anglais",       start: "13:30", end: "15:00", room: "FER AMPHI A" },
       { cat: "TD", mod: "Test logiciel",     start: "15:00", end: "16:30", room: "FER FT105" },
       { cat: "CM", mod: "IA : Théorie",      start: "16:45", end: "18:00", room: "FER AMPHI B" },
     ],
@@ -383,7 +387,8 @@
   function buildWeek(scope) {
     const w = widget(scope, "large");
     const head = el("div", "week-head");
-    head.append(el("span", "t", "Semaine du 21 sept."), el("span", "c", "15 cours"));
+    const count = Object.values(WEEK).flat().filter(e => !e.cancelled).length;
+    head.append(el("span", "t", "Semaine du 21 sept."), el("span", "c", `${count} cours`));
     w.append(head);
 
     const startMin = 8 * 60, endMin = 18 * 60;
@@ -418,9 +423,21 @@
     days.forEach(d => {
       const col = el("div", "col-day" + (d === TODAY ? " today" : ""));
       col.style.width = px(colW);
-      WEEK[d].forEach(e => {
-        const top = Math.round((mins(e.start) - startMin) * scale);
-        const h = Math.max(10, Math.round((mins(e.end) - startMin) * scale) - top);
+      const toY = t => Math.round((mins(t) - startMin) * scale);
+      layoutDay(WEEK[d], toY, gridH).forEach(g => {
+        const n = g.lanes.length + (g.more ? 1 : 0);
+        const laneW = Math.floor((colW - (n - 1) * LANE_GAP) / n);
+        g.lanes.forEach((lane, k) => lane.forEach(p => col.append(block(d, p.e, g.top + p.y, p.h, n > 1 ? k * (laneW + LANE_GAP) : null, laneW))));
+        if (g.more) {
+          const m = el("div", "block");
+          m.style.cssText = `top:${px(g.top)};height:${px(g.h)};left:${px((n - 1) * (laneW + LANE_GAP))};right:auto;width:${px(laneW)};background:var(--today-col)`;
+          const t = el("div", "t", `+${g.more}`); t.style.color = "var(--sub)";
+          m.append(t);
+          col.append(m);
+        }
+      });
+      // left : null → pleine largeur de la colonne ; sinon sous-colonne (cours simultanés)
+      function block(d, e, top, h, left, width) {
         const past = days.indexOf(d) < days.indexOf(TODAY) || (d === TODAY && mins(e.end) <= NOW);
         const live = d === TODAY && !e.cancelled && mins(e.start) <= NOW && mins(e.end) > NOW;
         const done = past || e.cancelled;
@@ -434,8 +451,9 @@
           if (e.cancelled) b.append(el("div", "cancelled", "Annulé"));
           else if (e.room) b.append(el("div", "r", e.room));
         }
-        col.append(b);
-      });
+        if (left !== null) { b.style.left = px(left); b.style.right = "auto"; b.style.width = px(width); }
+        return b;
+      }
       // Trait "maintenant" : seulement aujourd'hui, et seulement dans un trou
       if (d === TODAY) {
         const busy = WEEK[d].some(e => mins(e.start) <= NOW && mins(e.end) > NOW);
@@ -521,6 +539,49 @@
     });
     w.append(stack);
     return w;
+  }
+
+  // Placement des cours d'une journée — même algorithme que layoutDay dans celcat-widget.js :
+  // les cours simultanés partagent la colonne, « +N » au-delà de MAX_LANES.
+  const MAX_LANES = 2, LANE_GAP = 2;
+  function layoutDay(evts, y, gridH) {
+    const sorted = evts.slice().sort((a, b) => mins(a.start) - mins(b.start) || mins(b.end) - mins(a.end));
+    const out = [];
+    let cursor = 0;
+    for (let i = 0; i < sorted.length;) {
+      const group = [sorted[i]];
+      let end = sorted[i].end;
+      for (i++; i < sorted.length && mins(sorted[i].start) < mins(end); i++) {
+        group.push(sorted[i]);
+        if (mins(sorted[i].end) > mins(end)) end = sorted[i].end;
+      }
+      const top = Math.max(y(group[0].start), cursor);
+      const h = Math.min(Math.max(10, y(end) - top), gridH - top);
+      if (h <= 0) continue;
+      const lanes = [];
+      for (const e of group) {
+        let lane = lanes.find(l => mins(l[l.length - 1].end) <= mins(e.start));
+        if (!lane) lanes.push(lane = []);
+        lane.push(e);
+      }
+      let shown = lanes, more = 0;
+      if (lanes.length > MAX_LANES) {
+        shown = lanes.slice(0, MAX_LANES - 1);
+        more = lanes.slice(MAX_LANES - 1).reduce((n, l) => n + l.length, 0);
+      }
+      const placed = shown.map(lane => {
+        let c = 0;
+        return lane.map(e => {
+          const t = Math.max(y(e.start) - top, c);
+          const eh = Math.min(Math.max(10, y(e.end) - top - t), h - t);
+          c = t + Math.max(eh, 0);
+          return { e, y: t, h: eh };
+        }).filter(p => p.h > 0);
+      });
+      out.push({ top, h, lanes: placed, more });
+      cursor = top + h;
+    }
+    return out;
   }
 
   function hexA(hex, a) {

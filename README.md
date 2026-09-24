@@ -27,7 +27,7 @@ Tes cours directement sur l'écran d'accueil : horaires, salles, type de cours, 
 
 - **Vue du jour** — cours du jour (ou du prochain jour de cours), cartes sombres/claires avec bordure colorée par type : CM rouge, TD bleu, TP violet, examen orange. Le vert est réservé au cours en cours : une couleur verte envoyée par CELCAT est remplacée par du violet.
 - **Mode live** (petit widget) — chaque cours disparaît 30 min après son début pour laisser la place au suivant et à sa salle.
-- **Vue semaine** — planning de la semaine sur un grand widget (trait rouge sur l'heure courante), avec possibilité d'afficher les semaines suivantes. Les cours simultanés (groupes, TP en parallèle) s'affichent côte à côte ; au-delà de 3, un bloc « +N » résume le reste.
+- **Vue semaine** — planning de la semaine sur un grand widget (trait rouge sur l'heure courante), avec possibilité d'afficher les semaines suivantes. Les cours simultanés (groupes, TP en parallèle) s'affichent côte à côte ; au-delà de 2, le premier reste affiché et un bloc « +N » résume les autres (la vue jour les montre tous).
 - **Prochain cours** — seulement le cours suivant et sa salle ; c'est aussi l'affichage automatique sur l'écran verrouillé.
 - **Cours annulés** grisés au lieu d'être masqués ; **fériés et vacances** affichés en bandeau, sans horaire ni rappel.
 - **Notifications** si l'emploi du temps change (salle, horaire, annulation, ajout) sur les 7 prochains jours.
