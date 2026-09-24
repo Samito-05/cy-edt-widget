@@ -303,12 +303,24 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
   global.netCalls = [];
   await load();
   ok("nouvelle tentative après 10 min", pwdPosts() === 1, JSON.stringify(global.netCalls));
+  ok("1 essai suspect compté", readLockFile().strikes === 1, fsn.readFileSync(AUTHLOCK, "utf8"));
+
+  // 2e réponse jamais reçue → plafond atteint : verrou définitif, plus aucun envoi
+  const stale3 = readLockFile(); stale3.at = Date.now() - 11 * 60000;
+  fsn.writeFileSync(AUTHLOCK, JSON.stringify(stale3));
+  expire();
+  global.netCalls = [];
+  await load();
+  ok("verrou définitif après 2 envois non confirmés", readLockFile().blocked === true && pwdPosts() === 0,
+     fsn.readFileSync(AUTHLOCK, "utf8") + " " + JSON.stringify(global.netCalls));
+  ok("badge « identifiants » après plafond", global.texts().some(t => /identifiants/.test(t)),
+     JSON.stringify(global.texts()).slice(0, 200));
 
   // connexion acceptée → le verrou provisoire disparaît
   let gets = 0;
   NET = { "/LdapLogin/Logon": "<html>agenda</html>", "/LdapLogin": LOGIN_FORM,
           "/Home/GetCalendarData": () => (++gets === 1 ? "<html>login</html>" : JSON.stringify(BASE_EVENTS)) };
-  const stale2 = readLockFile(); stale2.at = Date.now() - 11 * 60000;
+  const stale2 = { at: Date.now() - 11 * 60000, fp: readLockFile().fp, pending: true };
   fsn.writeFileSync(AUTHLOCK, JSON.stringify(stale2));
   expire({ data: [] });
   global.netCalls = [];
@@ -316,6 +328,45 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
   ok("succès efface le verrou provisoire", !fsn.existsSync(AUTHLOCK),
      fsn.existsSync(AUTHLOCK) ? fsn.readFileSync(AUTHLOCK, "utf8") : "");
   ok("cours reçus après connexion", readCacheFile().data.length === 5);
+
+  // connexion « acceptée » (pas de formulaire réaffiché) mais toujours aucun cours :
+  // le mot de passe ne doit pas repartir à chaque backoff
+  console.log("\n[4d] connexion non confirmée");
+  NET = { "/LdapLogin/Logon": "<html>page inconnue</html>", "/LdapLogin": LOGIN_FORM,
+          "/Home/GetCalendarData": "<html>login</html>" };
+  for (let i = 0; i < 4; i++) { expire(); await load(); }
+  global.netCalls = [];
+  expire(); await load();
+  ok("verrou définitif après 2 connexions sans cours", fsn.existsSync(AUTHLOCK) && readLockFile().blocked === true,
+     fsn.existsSync(AUTHLOCK) ? fsn.readFileSync(AUTHLOCK, "utf8") : "aucun verrou");
+  ok("plus aucun envoi du mot de passe", pwdPosts() === 0, JSON.stringify(global.netCalls));
+  const FP = readLockFile().fp;
+  fsn.rmSync(AUTHLOCK, { force: true });
+
+  // autre widget en pleine connexion : pas de badge « identifiants », pas de backoff
+  console.log("\n[4e] tentative d'un autre widget en cours");
+  NET = { "/Home/GetCalendarData": "<html>login</html>", "/LdapLogin": LOGIN_FORM };
+  expire();
+  fsn.writeFileSync(AUTHLOCK, JSON.stringify({ at: Date.now(), fp: FP, pending: true }));
+  global.netCalls = [];
+  await load();
+  ok("aucun envoi du mot de passe", pwdPosts() === 0, JSON.stringify(global.netCalls));
+  ok("pas de badge « identifiants »", !global.texts().some(t => /identifiants/.test(t)),
+     JSON.stringify(global.texts()).slice(0, 200));
+  ok("pas d'échec mémorisé", !readCacheFile().fail, JSON.stringify(readCacheFile().fail));
+  fsn.rmSync(AUTHLOCK, { force: true });
+
+  // échec pendant qu'un autre widget réussit : ses données ne sont pas écrasées
+  console.log("\n[4f] course entre deux widgets");
+  expire({ data: [] });
+  NET = { "/Home/GetCalendarData": () => {
+    const c = readCacheFile();       // l'autre widget écrit un cache frais pendant notre requête
+    fsn.writeFileSync(CACHE, JSON.stringify({ ...c, at: Date.now(), data: BASE_EVENTS }));
+    throw new Error("coupure");
+  } };
+  await load();
+  ok("cache frais de l'autre widget conservé", readCacheFile().data.length === 5 && !readCacheFile().fail,
+     JSON.stringify(readCacheFile()).slice(0, 200));
 
   // --- 5. backoff respecté (panne serveur, pas un refus d'identifiants)
   console.log("\n[5] backoff");
@@ -457,6 +508,30 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
     ok(`rendu malgré backgroundColor ${JSON.stringify(bad)}`,
        !err && global.texts().some(t => /Conseil/.test(t)),
        (err && err.message) || JSON.stringify(global.texts()).slice(0, 160));
+  }
+
+  // --- 13 ter. données abîmées renvoyées par CELCAT
+  console.log("\n[13c] entité HTML hors Unicode + date illisible");
+  {
+    const e1 = ev("d1", 1, 9, "TD", "Chimie &#99999999; &#x110000;", "FT202");
+    const e2 = ev("d2", 1, 11, "TD", "Physique", "FT101");
+    const e3 = { ...ev("d3", 1, 14, "TD", "Fantôme", "FT305"), start: "pas une date" };
+    const e4 = { ...ev("d4", 1, 16, "TD", "Biologie", "FT305"), end: "n'importe quoi" };
+    NET = { "/Home/GetCalendarData": JSON.stringify([e1, e2, e3, e4]) };
+    fsn.rmSync(CACHE, { force: true });
+    global.args.widgetParameter = "";
+    let err = null;
+    try { await load(); } catch (x) { err = x; }
+    const t = global.texts();
+    ok("rendu malgré &#99999999;", !err && t.some(s => /Chimie/.test(s)), (err && err.message) || JSON.stringify(t));
+    ok("cours à date illisible ignoré", !t.some(s => /Fantôme|NaN/.test(s)), JSON.stringify(t));
+    ok("fin illisible → 1 h par défaut", t.includes("17:00"), JSON.stringify(t));
+    global.args.widgetParameter = "semaine";
+    err = null;
+    try { await load(); } catch (x) { err = x; }
+    ok("vue semaine malgré données abîmées", !err && !global.texts().some(s => /NaN/.test(s)),
+       (err && err.message) || JSON.stringify(global.texts()));
+    global.args.widgetParameter = "";
   }
 
   // --- 14. comparaison de versions
