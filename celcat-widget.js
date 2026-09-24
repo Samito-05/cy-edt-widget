@@ -17,7 +17,7 @@
 //  - Ajoute un widget Scriptable (grand conseillé) et choisis ce script.
 // ============================================================
 
-const VERSION = "1.3.2";         // version de ce script (comparée à celle du dépôt)
+const VERSION = "1.3.3";         // version de ce script (comparée à celle du dépôt)
 const REPO = "https://github.com/Samito-05/cy-edt-widget";
 const REPO_RAW = "https://raw.githubusercontent.com/Samito-05/cy-edt-widget/main/celcat-widget.js";
 
@@ -950,8 +950,9 @@ function addWeekBlock(col, e, width, height, now) {
 }
 
 // Cours qui se chevauchent (deux groupes, TP en parallèle…) : côte à côte.
-// Au-delà de MAX_LANES colonnes, les dernières sont résumées en « +N ».
-const MAX_LANES = 3;
+// Au-delà de MAX_LANES colonnes, les dernières sont résumées en « +N » : à 3 colonnes,
+// chacune ne fait plus que ~17 pt et les noms deviennent illisibles.
+const MAX_LANES = 2;
 const LANE_GAP = 2;
 
 // Placement vertical des cours d'une journée, en points depuis le haut de la grille.
