@@ -17,7 +17,7 @@
 //  - Ajoute un widget Scriptable (grand conseillé) et choisis ce script.
 // ============================================================
 
-const VERSION = "1.3.3";         // version de ce script (comparée à celle du dépôt)
+const VERSION = "1.3.4";         // version de ce script (comparée à celle du dépôt)
 const REPO = "https://github.com/Samito-05/cy-edt-widget";
 const REPO_RAW = "https://raw.githubusercontent.com/Samito-05/cy-edt-widget/main/celcat-widget.js";
 
@@ -954,11 +954,13 @@ function addWeekBlock(col, e, width, height, now) {
 // chacune ne fait plus que ~17 pt et les noms deviennent illisibles.
 const MAX_LANES = 2;
 const LANE_GAP = 2;
+const MORE_W = 16;              // largeur de la bande « +N »
 
 // Placement vertical des cours d'une journée, en points depuis le haut de la grille.
 // Les cours qui se chevauchent forment un groupe ; chaque cours du groupe va dans
-// la 1re colonne (lane) libre. Retourne [{ top, h, lanes: [[{ e, y, h }]], more }],
-// où y est relatif au haut du groupe. y(date) → position dans la grille.
+// la 1re colonne (lane) libre. Retourne [{ top, h, lanes: [[{ e, y, h }]], more, hidden }],
+// où y est relatif au haut du groupe, hidden les cours résumés par « +N ».
+// y(date) → position dans la grille.
 function layoutDay(evts, y, gridH) {
   const sorted = evts.slice().sort((a, b) => a.start - b.start || b.end - a.end);
   const out = [];
@@ -980,10 +982,10 @@ function layoutDay(evts, y, gridH) {
       if (!lane) lanes.push(lane = []);
       lane.push(e);
     }
-    let shown = lanes, more = 0;
+    let shown = lanes, hidden = [];
     if (lanes.length > MAX_LANES) {
       shown = lanes.slice(0, MAX_LANES - 1);
-      more = lanes.slice(MAX_LANES - 1).reduce((n, l) => n + l.length, 0);
+      hidden = lanes.slice(MAX_LANES - 1).flat();
     }
     const placed = shown.map(lane => {
       let c = 0;
@@ -994,16 +996,19 @@ function layoutDay(evts, y, gridH) {
         return { e, y: t, h: eh };
       }).filter(p => p.h > 0);
     });
-    out.push({ top, h, lanes: placed, more });
+    out.push({ top, h, lanes: placed, more: hidden.length, hidden });
     cursor = top + h;
   }
   return out;
 }
 
-// Groupe de cours simultanés : une rangée de sous-colonnes de hauteur fixe
+// Groupe de cours simultanés : une rangée de sous-colonnes de hauteur fixe.
+// Cours en trop : bande étroite « +N », au style d'un bloc de cours (couleur du 1er
+// cours caché), pour laisser la largeur aux cours affichés.
 function addWeekGroup(col, g, width, now) {
-  const n = g.lanes.length + (g.more ? 1 : 0);
-  const laneW = Math.floor((width - (n - 1) * LANE_GAP) / n);
+  const n = g.lanes.length;
+  const avail = width - (g.more ? MORE_W + LANE_GAP : 0);
+  const laneW = Math.floor((avail - (n - 1) * LANE_GAP) / n);
   const row = col.addStack();
   row.layoutHorizontally();
   row.topAlignContent();
@@ -1023,15 +1028,22 @@ function addWeekGroup(col, g, width, now) {
   });
   if (g.more) {
     row.addSpacer(LANE_GAP);
+    const first = g.hidden[0];
+    const done = g.hidden.every(e => e.end <= now || e.cancelled);
     const m = row.addStack();
-    m.size = new Size(laneW, g.h);
+    m.size = new Size(MORE_W, g.h);
     m.layoutVertically();
-    m.backgroundColor = STYLE.todayCol;
+    m.backgroundColor = new Color(first.color, done ? 0.08 : 0.2);
+    m.borderColor = new Color(first.color, done ? 0.3 : 0.9);
+    m.borderWidth = 1;
     m.cornerRadius = 5;
-    m.setPadding(2, 2, 2, 2);
-    const t = m.addText(`+${g.more}`);
-    t.font = STYLE.bold(8); t.textColor = STYLE.sub;
+    m.addSpacer();
+    const r = m.addStack();
+    r.addSpacer();
+    const t = r.addText(`+${g.more}`);
+    t.font = STYLE.bold(8); t.textColor = STYLE.text; t.textOpacity = done ? 0.4 : 1;
     t.lineLimit = 1; t.minimumScaleFactor = 0.7;
+    r.addSpacer();
     m.addSpacer();
   }
 }

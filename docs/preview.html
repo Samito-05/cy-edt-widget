@@ -425,14 +425,18 @@
       col.style.width = px(colW);
       const toY = t => Math.round((mins(t) - startMin) * scale);
       layoutDay(WEEK[d], toY, gridH).forEach(g => {
-        const n = g.lanes.length + (g.more ? 1 : 0);
-        const laneW = Math.floor((colW - (n - 1) * LANE_GAP) / n);
-        g.lanes.forEach((lane, k) => lane.forEach(p => col.append(block(d, p.e, g.top + p.y, p.h, n > 1 ? k * (laneW + LANE_GAP) : null, laneW))));
+        const n = g.lanes.length;
+        const avail = colW - (g.more ? MORE_W + LANE_GAP : 0);
+        const laneW = Math.floor((avail - (n - 1) * LANE_GAP) / n);
+        const split = n > 1 || g.more;
+        g.lanes.forEach((lane, k) => lane.forEach(p => col.append(block(d, p.e, g.top + p.y, p.h, split ? k * (laneW + LANE_GAP) : null, laneW))));
         if (g.more) {
+          // bande étroite au style d'un bloc de cours, couleur du 1er cours caché
+          const c = color(g.hidden[0]);
           const m = el("div", "block");
-          m.style.cssText = `top:${px(g.top)};height:${px(g.h)};left:${px((n - 1) * (laneW + LANE_GAP))};right:auto;width:${px(laneW)};background:var(--today-col)`;
-          const t = el("div", "t", `+${g.more}`); t.style.color = "var(--sub)";
-          m.append(t);
+          m.style.cssText = `top:${px(g.top)};height:${px(g.h)};left:${px(n * (laneW + LANE_GAP))};right:auto;width:${px(MORE_W)};` +
+            `background:${hexA(c, 0.2)};border:${px(1)} solid ${hexA(c, 0.9)};padding:0;display:flex;align-items:center;justify-content:center`;
+          m.append(el("div", "t", `+${g.more}`));
           col.append(m);
         }
       });
@@ -543,7 +547,7 @@
 
   // Placement des cours d'une journée — même algorithme que layoutDay dans celcat-widget.js :
   // les cours simultanés partagent la colonne, « +N » au-delà de MAX_LANES.
-  const MAX_LANES = 2, LANE_GAP = 2;
+  const MAX_LANES = 2, LANE_GAP = 2, MORE_W = 16;
   function layoutDay(evts, y, gridH) {
     const sorted = evts.slice().sort((a, b) => mins(a.start) - mins(b.start) || mins(b.end) - mins(a.end));
     const out = [];
@@ -564,10 +568,10 @@
         if (!lane) lanes.push(lane = []);
         lane.push(e);
       }
-      let shown = lanes, more = 0;
+      let shown = lanes, hidden = [];
       if (lanes.length > MAX_LANES) {
         shown = lanes.slice(0, MAX_LANES - 1);
-        more = lanes.slice(MAX_LANES - 1).reduce((n, l) => n + l.length, 0);
+        hidden = lanes.slice(MAX_LANES - 1).flat();
       }
       const placed = shown.map(lane => {
         let c = 0;
@@ -578,7 +582,7 @@
           return { e, y: t, h: eh };
         }).filter(p => p.h > 0);
       });
-      out.push({ top, h, lanes: placed, more });
+      out.push({ top, h, lanes: placed, more: hidden.length, hidden });
       cursor = top + h;
     }
     return out;
