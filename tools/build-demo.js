@@ -13,15 +13,23 @@ function build() {
   const data = read("tools/demo-data.js").trimEnd();
   const marker = /^const DEMO = null;$/m;
   if (!marker.test(src)) throw new Error("ligne « const DEMO = null; » introuvable dans celcat-widget.js");
+  // L'en-tête du vrai script parle d'identifiants et de Trousseau : remplacé par celui de la démo
+  const mainHeader = /^\/\/ =+\n[\s\S]*?\n\/\/ =+\n\n?/;
+  if (!mainHeader.test(src)) throw new Error("en-tête « // ===… » introuvable en haut de celcat-widget.js");
   const header =
     "// ============================================================\n" +
     "//  DÉMO du widget emploi du temps CELCAT — emploi du temps FICTIF\n" +
     "//  Aucun identifiant, aucun appel réseau, aucune notification, rien\n" +
     "//  écrit dans le calendrier. Pour le vrai widget : celcat-widget.js.\n" +
     "//\n" +
+    "//  - Lance-le dans Scriptable : menu d'aperçus (grand, moyen, petit,\n" +
+    "//    semaine, prochain cours, écran verrouillé).\n" +
+    "//  - Widget → Parameter : mêmes valeurs que le vrai script\n" +
+    "//    (vide, 1, 2…, semaine, semaine 1, prochain).\n" +
+    "//\n" +
     "//  Fichier généré par tools/build-demo.js : ne pas modifier à la main.\n" +
     "// ============================================================\n\n";
-  return header + src.replace(marker, () => `${data}\nconst DEMO = demoData;`);
+  return header + src.replace(mainHeader, "").replace(marker, () => `${data}\nconst DEMO = demoData;`);
 }
 
 const out = build();
