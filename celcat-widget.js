@@ -9,13 +9,15 @@
 //  En plus : cours annulés grisés, notification si l'emploi du temps
 //  change, rappel avant chaque cours, copie dans le calendrier iPhone,
 //  mode clair/sombre automatique (voir « réglages » plus bas).
+//  Lancé par Siri / Raccourcis : répond en texte (prochain cours, ou
+//  la journée avec le paramètre "jour").
 //
 //  - Lance-le une fois dans Scriptable pour enregistrer tes
 //    identifiants et ton numéro étudiant (stockés dans le Trousseau iOS).
 //  - Ajoute un widget Scriptable (grand conseillé) et choisis ce script.
 // ============================================================
 
-const VERSION = "1.2.2";         // version de ce script (comparée à celle du dépôt)
+const VERSION = "1.3.0";         // version de ce script (comparée à celle du dépôt)
 const REPO = "https://github.com/Samito-05/cy-edt-widget";
 const REPO_RAW = "https://raw.githubusercontent.com/Samito-05/cy-edt-widget/main/celcat-widget.js";
 
@@ -35,6 +37,18 @@ const REMIND_BEFORE_MIN = 10;    // rappel X min avant chaque cours, avec la sal
 const SYNC_CALENDAR = true;      // copie les cours dans un calendrier iPhone dédié
 const CALENDAR_NAME = "Cours CY";
 const THEME = "auto";            // "auto" (suit l'iPhone), "dark" ou "light"
+
+// Cours à masquer partout (widget, rappels, notifications, calendrier) : option non
+// suivie, cours d'un autre groupe… Texte (contenu dans la matière ou le type, sans
+// tenir compte des majuscules) ou expression régulière testée sur « Type - Matière ».
+const HIDE = [
+  // "Allemand",
+  // /^TP - Sport/i,
+];
+
+// Script de démo (celcat-demo.js) : tools/build-demo.js remplace la ligne ci-dessous
+// par un emploi du temps fictif. Ici : vraies données, rien à changer.
+const DEMO = null;
 
 const KC_USER = "celcat_user";
 const KC_PASS = "celcat_pass";
@@ -368,8 +382,10 @@ const CACHE_V = 2;               // incrémenter si le format du cache change �
 
 function readCache() {
   try {
-    if (!fm.fileExists(CACHE)) return null;
-    const c = JSON.parse(fm.readString(CACHE));
+    // iOS a pu couper writeCache entre la suppression et le renommage : le .tmp est complet
+    const file = fm.fileExists(CACHE) ? CACHE : fm.fileExists(CACHE + ".tmp") ? CACHE + ".tmp" : null;
+    if (!file) return null;
+    const c = JSON.parse(fm.readString(file));
     if (c.v !== CACHE_V) return null;  // écrit par une version plus ancienne du script
     return c.fid === FID ? c : null;   // cache d'un autre numéro étudiant → ignoré
   } catch (e) { return null; }
@@ -579,11 +595,18 @@ function isCancelled(category, lines) {
   return /annul|cancel/i.test(category) || lines.some(l => /\bannul|\bcancel/i.test(l));
 }
 
+// Cours masqué par l'utilisateur (voir HIDE)
+function isHidden(e) {
+  return HIDE.some(h => h instanceof RegExp
+    ? h.test(e.title)
+    : [e.module, e.category].some(s => s.toLowerCase().includes(String(h).toLowerCase())));
+}
+
 // Cours sans date de début lisible : ignoré (sinon "NaN:NaN", tri et grille cassés)
 const parseAll = data => {
   const ok = data.filter(e => e && !isNaN(parseDate(e.start)));
   const f = frequentLines(ok);
-  return ok.map(e => parse(e, f));
+  return ok.map(e => parse(e, f)).filter(e => !isHidden(e));
 };
 
 // ---------- carte de cours ----------
@@ -906,6 +929,92 @@ function addWeekBlock(col, e, width, height, now) {
   b.addSpacer();
 }
 
+// Cours qui se chevauchent (deux groupes, TP en parallèle…) : côte à côte.
+// Au-delà de MAX_LANES colonnes, les dernières sont résumées en « +N ».
+const MAX_LANES = 3;
+const LANE_GAP = 2;
+
+// Placement vertical des cours d'une journée, en points depuis le haut de la grille.
+// Les cours qui se chevauchent forment un groupe ; chaque cours du groupe va dans
+// la 1re colonne (lane) libre. Retourne [{ top, h, lanes: [[{ e, y, h }]], more }],
+// où y est relatif au haut du groupe. y(date) → position dans la grille.
+function layoutDay(evts, y, gridH) {
+  const sorted = evts.slice().sort((a, b) => a.start - b.start || b.end - a.end);
+  const out = [];
+  let cursor = 0;
+  for (let i = 0; i < sorted.length;) {
+    const group = [sorted[i]];
+    let end = sorted[i].end;
+    for (i++; i < sorted.length && sorted[i].start < end; i++) {
+      group.push(sorted[i]);
+      if (sorted[i].end > end) end = sorted[i].end;
+    }
+    const top = Math.max(y(group[0].start), cursor);
+    const h = Math.min(Math.max(10, y(end) - top), gridH - top);   // jamais plus bas que la grille
+    if (h <= 0) continue;
+
+    const lanes = [];
+    for (const e of group) {
+      let lane = lanes.find(l => l[l.length - 1].end <= e.start);
+      if (!lane) lanes.push(lane = []);
+      lane.push(e);
+    }
+    let shown = lanes, more = 0;
+    if (lanes.length > MAX_LANES) {
+      shown = lanes.slice(0, MAX_LANES - 1);
+      more = lanes.slice(MAX_LANES - 1).reduce((n, l) => n + l.length, 0);
+    }
+    const placed = shown.map(lane => {
+      let c = 0;
+      return lane.map(e => {
+        const t = Math.max(y(e.start) - top, c);
+        const eh = Math.min(Math.max(10, y(e.end) - top - t), h - t);
+        c = t + Math.max(eh, 0);
+        return { e, y: t, h: eh };
+      }).filter(p => p.h > 0);
+    });
+    out.push({ top, h, lanes: placed, more });
+    cursor = top + h;
+  }
+  return out;
+}
+
+// Groupe de cours simultanés : une rangée de sous-colonnes de hauteur fixe
+function addWeekGroup(col, g, width, now) {
+  const n = g.lanes.length + (g.more ? 1 : 0);
+  const laneW = Math.floor((width - (n - 1) * LANE_GAP) / n);
+  const row = col.addStack();
+  row.layoutHorizontally();
+  row.topAlignContent();
+  row.size = new Size(width, g.h);
+  g.lanes.forEach((lane, k) => {
+    if (k) row.addSpacer(LANE_GAP);
+    const lc = row.addStack();
+    lc.layoutVertically();
+    lc.size = new Size(laneW, g.h);
+    let c = 0;
+    for (const p of lane) {
+      if (p.y > c) lc.addSpacer(p.y - c);
+      addWeekBlock(lc, p.e, laneW, p.h, now);
+      c = p.y + p.h;
+    }
+    if (g.h - c > 0) lc.addSpacer(g.h - c);   // taille exacte, comme la colonne du jour
+  });
+  if (g.more) {
+    row.addSpacer(LANE_GAP);
+    const m = row.addStack();
+    m.size = new Size(laneW, g.h);
+    m.layoutVertically();
+    m.backgroundColor = STYLE.todayCol;
+    m.cornerRadius = 5;
+    m.setPadding(2, 2, 2, 2);
+    const t = m.addText(`+${g.more}`);
+    t.font = STYLE.bold(8); t.textColor = STYLE.sub;
+    t.lineLimit = 1; t.minimumScaleFactor = 0.7;
+    m.addSpacer();
+  }
+}
+
 function buildWeekWidget(events, stale, error, weekOffset = 0) {
   const now = new Date();
   const sorted = events.slice().sort((a, b) => a.start - b.start);
@@ -1023,16 +1132,13 @@ function buildWeekWidget(events, stale, error, weekOffset = 0) {
       cursor = y;
     };
 
-    weekEvents.filter(e => ymd(e.start) === ymd(d)).forEach(e => {
-      const top = Math.round((mins(e.start) - startMin) * scale);
-      const bottom = Math.round((mins(e.end) - startMin) * scale);
-      const y = Math.max(top, cursor);
-      spacerTo(y);
-      const h = Math.min(Math.max(10, bottom - y), gridH - y);   // jamais plus bas que la grille
-      if (h <= 0) return;
-      addWeekBlock(col, e, colW, h, now);
-      cursor = y + h;
-    });
+    const toY = t => Math.round((mins(t) - startMin) * scale);
+    for (const g of layoutDay(weekEvents.filter(e => ymd(e.start) === ymd(d)), toY, gridH)) {
+      spacerTo(g.top);
+      if (g.lanes.length === 1 && !g.more && g.lanes[0].length === 1) addWeekBlock(col, g.lanes[0][0].e, colW, g.h, now);
+      else addWeekGroup(col, g, colW, now);
+      cursor = g.top + g.h;
+    }
     // Plus aucun cours après l'heure actuelle : le trait va après la dernière carte
     if (nowY >= cursor && !nowDrawn && nowY < gridH - 1.5) {
       if (nowY > cursor) col.addSpacer(nowY - cursor);
@@ -1047,7 +1153,11 @@ function buildWeekWidget(events, stale, error, weekOffset = 0) {
 
   if (!weekEvents.length) {
     w.addSpacer(4);
-    const n = w.addText(error && !events.length ? `⚠️ ${error}` : "Pas de cours cette semaine 🎉");
+    // Au-delà des DAYS_AHEAD jours téléchargés : on ne sait pas, ce n'est pas « pas de cours »
+    const beyond = !DEMO && monday >= fetchWindow().end;
+    const n = w.addText(error && !events.length ? `⚠️ ${error}`
+                        : beyond ? `Semaine hors période : seuls les ${DAYS_AHEAD} prochains jours sont téléchargés.`
+                        : "Pas de cours cette semaine 🎉");
     n.font = STYLE.font(12); n.textColor = STYLE.muted;
   }
   w.addSpacer();
@@ -1161,7 +1271,7 @@ async function syncCalendar(events, from, to) {
   catch (e) {
     // Créer le calendrier demande l'accès à l'app Calendrier : impossible depuis un widget,
     // qui resterait bloqué sur la demande. Le premier lancement dans Scriptable s'en charge.
-    if (config.runsInWidget) return;
+    if (config.runsInWidget || config.runsWithSiri) return;
     cal = await Calendar.createForEvents(CALENDAR_NAME);
   }
 
@@ -1274,7 +1384,8 @@ function buildNextWidget(events, fam, stale, error) {
 
   // --- Écran verrouillé : une ligne (au-dessus de l'heure) ---
   if (fam === "accessoryInline") {
-    text(w, inProgress ? `En cours · ${e.room}` : `${when} · ${e.room}`, Font.systemFont(12));
+    const room = e.room || "Salle ?";
+    text(w, inProgress ? `En cours · ${room}` : `${when} · ${room}`, Font.systemFont(12));
     return w;
   }
 
@@ -1348,57 +1459,27 @@ async function checkUpdate() {
   return { remote: m[1], newer: isNewer(m[1], VERSION) };
 }
 
-// ---------- démo ----------
-// Emploi du temps fictif, au format renvoyé par CELCAT : il traverse donc le même
-// parsing et le même rendu que les vraies données. Sert aux captures d'écran du
-// dépôt et à essayer le widget avant d'avoir ses identifiants.
-// Widget → Parameter : "demo", "demo semaine", "demo prochain", "demo 1"…
-function demoData() {
-  const monday = mondayOf(new Date());
-  const day = i => { const d = new Date(monday); d.setDate(d.getDate() + i); return d; };
-  const stamp = (d, h, m) => `${ymd(d)}T${pad(h)}:${pad(m)}:00`;
-  const mk = (id, i, [sh, sm], [eh, em], cat, mod, room, staff, note) => {
-    const d = day(i);
-    return {
-      id: "demo" + id, start: stamp(d, sh, sm), end: stamp(d, eh, em), allDay: false,
-      eventCategory: cat, modules: [mod], sites: ["FER"],
-      description: [cat, mod, "ING2 GSI", room ? `FER ${room} SALLE DE COURS 40p` : "", staff, note]
-                     .filter(Boolean).join("<br />"),
-    };
-  };
-  const events = [
-    mk(1, 0, [8, 30], [10, 0],  "CM", "I2GSIM07 - Statistiques", "AMPHI B", "MARTIN CLAIRE"),
-    mk(2, 0, [10, 15], [11, 45], "TD", "Économie I2GECO01",      "FT202", "DUBOIS PAUL"),
-    mk(3, 0, [13, 0], [14, 30], "TD", "Projet tutoré",           "FT310", "DA SILVA INES"),
-    mk(4, 1, [9, 0], [10, 30],  "CM", "Cybersécurité I2GCYB01",  "AMPHI A", "NGUYEN ANH"),
-    mk(5, 1, [10, 45], [12, 15], "TD", "IA : Théorie",           "FT202", "MARTIN CLAIRE"),
-    mk(6, 1, [14, 0], [15, 30], "TD", "Test logiciel I2GTST01",  "FT105", "BERNARD LUC"),
-    mk(7, 3, [8, 30], [10, 0],  "TD", "Économie I2GECO01",       "FT202", "DUBOIS PAUL"),
-    mk(8, 3, [10, 15], [11, 45], "CM", "Test logiciel I2GTST01", "FT105", "BERNARD LUC", "Annulé"),
-    mk(9, 3, [12, 0], [13, 30], "TD", "Anglais DIOANG3D",        "FT310", "SMITH JANE, LEROY EMMA"),
-    mk(10, 3, [15, 0], [16, 30], "TD", "I2GSIM07 - Statistiques", "FT202", "MARTIN CLAIRE"),
-    mk(11, 4, [8, 30], [10, 0], "TD", "IA : Théorie",            "FT202", "MARTIN CLAIRE"),
-    mk(12, 4, [13, 0], [14, 30], "TD", "Conception Systèmes",    "FT105", "NGUYEN ANH"),
-    mk(13, 4, [16, 45], [18, 0], "Examen", "Mathématiques",      "AMPHI B", "BERNARD LUC"),
-  ];
-  // Un cours cale sur l'heure de la capture : carte verte « En cours · fin … »
-  const now = new Date();
-  const from = new Date(now.getTime() - 20 * 60000);
-  const to = new Date(now.getTime() + 70 * 60000);
-  events.push({
-    id: "demo0", allDay: false,
-    start: stamp(now, from.getHours(), from.getMinutes()),
-    end: stamp(now, to.getHours(), to.getMinutes()),
-    eventCategory: "TD", modules: ["Anglais DIOANG3D"], sites: ["FER"],
-    description: "TD<br />Anglais DIOANG3D<br />ING2 GSI<br />FER FT310 SALLE DE COURS 40p<br />SMITH JANE",
-  });
-  // Jour férié (journée entière) en milieu de semaine
-  events.push({
-    id: "demo-ferie", allDay: true, start: ymd(day(2)), end: null,
-    eventCategory: "Férié", modules: ["Jour férié"], sites: [],
-    description: "Férié<br />Jour férié",
-  });
-  return events;
+// ---------- Siri / Raccourcis ----------
+// « Dis Siri, <nom du script> » ou action « Exécuter le script » de Raccourcis :
+// réponse en texte, réutilisable dans un raccourci. Paramètre du raccourci :
+// vide → prochain cours ; "jour" → cours du jour (ou du prochain jour de cours).
+function siriNext(events, now) {
+  const e = nextClass(events, now);
+  if (!e) return "Pas de cours prévu.";
+  const where = e.room ? `, salle ${e.room}` : "";
+  if (e.start <= now) return `En cours : ${e.module}, jusqu'à ${hm(e.end)}${where}.`;
+  const day = ymd(e.start) === ymd(now) ? "aujourd'hui" : dayLabel(e.start).toLowerCase();
+  return `Prochain cours : ${e.module}${e.category ? ` (${e.category})` : ""}, ${day} à ${hm(e.start)}${where}.`;
+}
+
+function siriDay(events, now) {
+  const upcoming = events.filter(e => !e.cancelled && !e.allDay && e.end > now)
+                         .sort((a, b) => a.start - b.start);
+  if (!upcoming.length) return "Pas de cours prévu.";
+  const day = ymd(upcoming[0].start);
+  const list = upcoming.filter(e => ymd(e.start) === day)
+                       .map(e => `${hm(e.start)} ${e.module}${e.room ? ` (${e.room})` : ""}`);
+  return `${dayLabel(upcoming[0].start)} : ${list.join(", ")}.`;
 }
 
 // ---------- main ----------
@@ -1407,18 +1488,54 @@ function demoData() {
 //   1, 2, 3…    → jours de cours suivants (pour une pile de widgets qu'on fait défiler)
 //   semaine     → vue semaine (grand widget) ; "semaine 1" → semaine suivante
 //   prochain    → uniquement le prochain cours et sa salle
-//   demo…       → emploi du temps fictif, sans réseau ("demo semaine", "demo prochain"…)
 // Écran verrouillé : affiche toujours le prochain cours et sa salle.
 let family = config.widgetFamily || "large";
-const rawParam = String(args.widgetParameter || "").trim().toLowerCase();
-let demo = /^d[ée]mo\b/.test(rawParam);              // "demo", "demo semaine", "demo prochain"…
-const param = rawParam.replace(/^d[ée]mo\s*/, "");
+const param = String(args.widgetParameter || "").trim().toLowerCase();
 const weekParam = param.match(/^(semaine|week)\s*\+?\s*(\d*)$/);
 let view = weekParam ? "week" : /^(prochain|next)$/.test(param) ? "next" : "day";
 let offset = weekParam ? (parseInt(weekParam[2], 10) || 0) : (parseInt(param, 10) || 0);
 if (family.startsWith("accessory")) view = "next";
 
-if (!config.runsInWidget) {
+// Démo : données fictives, aucun appel réseau, rien d'écrit dans le calendrier,
+// aucune notification envoyée (fetched reste faux).
+const loadEvents = force => DEMO ? Promise.resolve({ data: DEMO(), stale: false, fetched: false })
+                                 : getEvents(force);
+
+if (config.runsWithSiri) {
+  let out;
+  try {
+    const res = await loadEvents(false);
+    const events = parseAll(res.data);
+    if (res.fetched) await afterFetch(res, events);
+    const q = String(args.shortcutParameter || (args.plainTexts || [])[0] || "").toLowerCase();
+    out = /jour|today|aujourd/.test(q) ? siriDay(events, new Date()) : siriNext(events, new Date());
+    if (res.stale) out += " (données hors ligne)";
+  } catch (e) { out = "Emploi du temps indisponible : " + e.message; }
+  Script.setShortcutOutput(out);
+  Script.complete();
+  return;
+}
+
+if (!config.runsInWidget && DEMO) {
+  // Script de démo : uniquement les aperçus
+  const previews = [
+    ["Grand widget",      { family: "large",  view: "day" }],
+    ["Widget moyen",      { family: "medium", view: "day" }],
+    ["Petit widget",      { family: "small",  view: "day" }],
+    ["Vue semaine",       { family: "large",  view: "week" }],
+    ["Prochain cours",    { family: "small",  view: "next" }],
+    ["Écran verrouillé",  { family: "accessoryRectangular", view: "next" }],
+  ];
+  const menu = new Alert();
+  menu.title = "Widget CELCAT · démo";
+  menu.message = "Emploi du temps fictif : aucune connexion, aucune notification, rien dans le calendrier.";
+  previews.forEach(([label]) => menu.addAction(label));
+  menu.addCancelAction("Fermer");
+  const c = await menu.present();
+  if (c === -1) { Script.complete(); return; }
+  ({ family, view } = previews[c][1]);
+  offset = 0;
+} else if (!config.runsInWidget) {
   const auth = readAuthLock();
   const lock = auth && auth.blocked ? auth : null;   // tentative en cours / simple compteur : rien à signaler
   const actions = [
@@ -1428,12 +1545,6 @@ if (!config.runsInWidget) {
     ["Aperçu vue semaine",                { family: "large",  view: "week" }],
     ["Aperçu prochain cours",             { family: "small",  view: "next" }],
     ["Aperçu écran verrouillé",           { family: "accessoryRectangular", view: "next" }],
-    ["Démo · grand widget",               { family: "large",  view: "day",  demo: true }],
-    ["Démo · widget moyen",               { family: "medium", view: "day",  demo: true }],
-    ["Démo · petit widget",               { family: "small",  view: "day",  demo: true }],
-    ["Démo · vue semaine",                { family: "large",  view: "week", demo: true }],
-    ["Démo · prochain cours",             { family: "small",  view: "next", demo: true }],
-    ["Démo · écran verrouillé",           { family: "accessoryRectangular", view: "next", demo: true }],
     ["Changer mes identifiants",          { creds: true }],
     ["Tester les notifications",          { testNotif: true }],
     ["Données brutes (debug)",            { debug: true }],
@@ -1493,15 +1604,11 @@ Copie le script depuis ${REPO} pour mettre à jour.`
   family = choice.family || "large";
   view = choice.view || "day";
   offset = 0;
-  demo = !!choice.demo;
 }
 
 let widget;
 try {
-  // Démo : données fictives, aucun appel réseau, rien d'écrit dans le calendrier,
-  // aucune notification envoyée (res.fetched reste faux).
-  const res = demo ? { data: demoData(), stale: false, fetched: false }
-                   : await getEvents(!config.runsInWidget);   // dans l'app : toujours à jour
+  const res = await loadEvents(!config.runsInWidget);   // dans l'app : toujours à jour
   const { data, stale, error } = res;
   const events = parseAll(data);
   // Nouvelles données → notifications de changement, rappels, calendrier

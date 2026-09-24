@@ -138,8 +138,13 @@ CalendarEvent.between = async () => [];
 global.CalendarEvent = CalendarEvent;
 global.Calendar = { forEventsByTitle: async t => ({ title: t }), createForEvents: async t => ({ title: t }) };
 global.QuickLook = { present: async () => {} };
-global.Alert = class { addAction() {} addCancelAction() {} addTextField() {} addSecureTextField() {} async present() { return -1; } };
-global.Script = { setWidget() {}, complete() {} };
+global.alerts = [];                 // menus présentés (libellés des actions)
+global.Alert = class {
+  constructor() { this.actions = []; global.alerts.push(this); }
+  addAction(l) { this.actions.push(l); } addCancelAction() {} addTextField() {} addSecureTextField() {}
+  async present() { return -1; }
+};
+global.Script = { setWidget() {}, complete() {}, setShortcutOutput(o) { global.shortcutOut = o; } };
 global.config = { runsInWidget: true, widgetFamily: "large" };
 global.args = { widgetParameter: "" };
 
@@ -166,9 +171,10 @@ const ALLDAY = {
 };
 const LOGIN_FORM = '<form><input name="__RequestVerificationToken" value="TOK123" /><input name="Password" type="password" /></form>';
 
-function load() {
+// file : script à exécuter ; patch : retouche du source (réglages en haut du fichier)
+function load(file = "celcat-widget.js", patch = s => s) {
   for (const k of Object.keys(require.cache)) delete require.cache[k];
-  const src = fsn.readFileSync(pathn.join(__dirname, "..", "celcat-widget.js"), "utf8");
+  const src = patch(fsn.readFileSync(pathn.join(__dirname, "..", file), "utf8"));
   return new Function(`return (async () => {\n${src}\n})();`)();
 }
 
@@ -461,26 +467,56 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
      JSON.stringify(mt));
   ok("salles affichées", mt.some(t => t.includes("FT202")) && mt.some(t => t.includes("FT305")), JSON.stringify(mt));
 
-  // --- 12. mode démo
-  console.log("\n[12] mode démo");
-  for (const [fam, p] of [["large", "demo"], ["large", "demo semaine"], ["small", "demo prochain"],
-                          ["medium", "demo"], ["accessoryRectangular", "demo"]]) {
+  // --- 12. script de démo (fichier séparé)
+  console.log("\n[12] script de démo");
+  {
+    const cp = require("child_process").spawnSync(process.execPath,
+      [pathn.join(__dirname, "..", "tools", "build-demo.js"), "--check"], { encoding: "utf8" });
+    ok("celcat-demo.js à jour (node tools/build-demo.js)", cp.status === 0, cp.stderr || cp.stdout);
+  }
+  const keychainBefore = JSON.stringify(keychain);
+  for (const [fam, p] of [["large", ""], ["large", "semaine"], ["small", "prochain"], ["small", ""],
+                          ["medium", ""], ["accessoryRectangular", ""]]) {
     global.config.widgetFamily = fam; global.args.widgetParameter = p;
     global.netCalls = []; global.calendarOps = []; global.notifications = [];
     NET = {};                                    // tout appel réseau échouerait
     fsn.rmSync(CACHE, { force: true });
     let err = null;
-    try { await load(); } catch (e) { err = e; }
-    ok(`démo ${fam} "${p}"`, !err, err && err.message);
+    try { await load("celcat-demo.js"); } catch (e) { err = e; }
+    ok(`démo ${fam} "${p || "(défaut)"}"`, !err, err && err.message);
     ok("  aucun réseau", global.netCalls.length === 0, JSON.stringify(global.netCalls));
-    ok("  rien écrit (calendrier, notifs, cache)",
-       !global.calendarOps.length && !global.notifications.length && !fsn.existsSync(CACHE),
+    ok("  rien écrit (calendrier, notifs, cache, Trousseau)",
+       !global.calendarOps.length && !global.notifications.length && !fsn.existsSync(CACHE) &&
+       JSON.stringify(keychain) === keychainBefore,
        JSON.stringify([global.calendarOps, global.notifications]));
   }
-  global.config.widgetFamily = "large"; global.args.widgetParameter = "demo";
-  await load();
+  global.config.widgetFamily = "large"; global.args.widgetParameter = "";
+  await load("celcat-demo.js");
   const dt = global.texts();
   ok("démo : cours affichés", dt.some(t => /Statistiques|Anglais|Économie/.test(t)), JSON.stringify(dt).slice(0, 200));
+
+  // menus : la démo n'a que ses aperçus, le vrai script plus aucune entrée « Démo »
+  global.config.runsInWidget = false;
+  global.alerts = [];
+  await load("celcat-demo.js");
+  const demoMenu = (global.alerts[0] || {}).actions || [];
+  ok("menu démo : 6 aperçus, rien d'autre", demoMenu.length === 6 && !demoMenu.some(l => /identifiants|notif|jour/i.test(l)),
+     JSON.stringify(demoMenu));
+  global.alerts = [];
+  await load();
+  const mainMenu = (global.alerts[0] || {}).actions || [];
+  ok("menu principal sans entrée « Démo »", mainMenu.length > 0 && !mainMenu.some(l => /d[ée]mo/i.test(l)),
+     JSON.stringify(mainMenu));
+  global.config.runsInWidget = true;
+
+  // l'ancien paramètre « demo » ne fait plus basculer le vrai script sur des données fictives
+  global.args.widgetParameter = "demo";
+  NET = { "/Home/GetCalendarData": JSON.stringify(BASE_EVENTS) };
+  fsn.rmSync(CACHE, { force: true });
+  await load();
+  ok("vrai script : paramètre « demo » ignoré", !global.texts().some(t => /Économie/.test(t)),
+     JSON.stringify(global.texts()).slice(0, 200));
+  global.args.widgetParameter = "";
 
   // --- 13. dates sans fuseau lues en heure locale
   console.log("\n[13] lecture des dates");
@@ -531,6 +567,113 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
     try { await load(); } catch (x) { err = x; }
     ok("vue semaine malgré données abîmées", !err && !global.texts().some(s => /NaN/.test(s)),
        (err && err.message) || JSON.stringify(global.texts()));
+    global.args.widgetParameter = "";
+  }
+
+  // --- 15. cours masqués (HIDE)
+  console.log("\n[15] cours masqués");
+  {
+    const hide = src => src.replace("const HIDE = [\n", 'const HIDE = [\n  "anglais", /^TP - /,\n');
+    NET = { "/Home/GetCalendarData": JSON.stringify(BASE_EVENTS) };
+    fsn.rmSync(CACHE, { force: true });
+    global.calendarOps = []; global.notifications = [];
+    await load("celcat-widget.js", hide);
+    const t = global.texts();
+    ok("matière masquée absente du widget", !t.some(s => /Anglais/.test(s)) && t.some(s => /Statistiques/.test(s)),
+       JSON.stringify(t));
+    ok("masquée aussi du calendrier (texte + regex)",
+       !global.calendarOps.some(o => /Anglais|Réseaux/.test(o)) && global.calendarOps.some(o => /Statistiques/.test(o)),
+       JSON.stringify(global.calendarOps));
+    ok("pas de rappel pour une matière masquée", !global.notifications.some(n => /Anglais/.test(n.title || "")),
+       JSON.stringify(global.notifications.map(n => n.title)));
+  }
+
+  // --- 16. Siri / Raccourcis
+  console.log("\n[16] Siri / Raccourcis");
+  global.config.runsWithSiri = true; global.config.runsInWidget = false;
+  global.alerts = [];
+  global.args.shortcutParameter = "";
+  global.shortcutOut = null;
+  await load();
+  ok("prochain cours en texte", /^Prochain cours : Statistiques \(TD\), demain à 08:00, salle FER FT202\.$/.test(global.shortcutOut || ""),
+     global.shortcutOut);
+  ok("aucun menu présenté", global.alerts.length === 0, JSON.stringify(global.alerts.map(a => a.actions)));
+  global.args.shortcutParameter = "jour";
+  await load();
+  ok("cours du jour en texte", /^Demain : 08:00 Statistiques \(FER FT202\), 13:00 Anglais \(FER FT101\)\.$/.test(global.shortcutOut || ""),
+     global.shortcutOut);
+  global.args.shortcutParameter = ""; global.netCalls = []; NET = {};
+  await load("celcat-demo.js");
+  ok("démo via Siri : réponse sans réseau", /cours/i.test(global.shortcutOut || "") && global.netCalls.length === 0,
+     global.shortcutOut);
+  global.config.runsWithSiri = false; global.config.runsInWidget = true;
+  global.args.shortcutParameter = "";
+
+  // --- 17. semaine au-delà des jours téléchargés
+  console.log("\n[17] semaine hors période");
+  NET = { "/Home/GetCalendarData": JSON.stringify(BASE_EVENTS) };
+  fsn.rmSync(CACHE, { force: true });
+  global.args.widgetParameter = "semaine 3";
+  await load();
+  ok("« hors période » au lieu de « pas de cours »", global.texts().some(t => /hors période/.test(t)),
+     JSON.stringify(global.texts()));
+  global.args.widgetParameter = "";
+
+  // --- 18. cache interrompu entre suppression et renommage
+  console.log("\n[18] cache .tmp orphelin");
+  {
+    const c = readCacheFile(); c.at = Date.now();
+    fsn.writeFileSync(CACHE + ".tmp", JSON.stringify(c));
+    fsn.rmSync(CACHE, { force: true });
+    NET = {};
+    global.netCalls = [];
+    await load();
+    ok("cours relus depuis le .tmp", global.texts().some(t => /Statistiques/.test(t)) && global.netCalls.length === 0,
+       JSON.stringify(global.texts()).slice(0, 200));
+    fsn.rmSync(CACHE + ".tmp", { force: true });
+  }
+
+  // --- 19. vue semaine : cours qui se chevauchent côte à côte
+  console.log("\n[19] cours simultanés");
+  {
+    const at1 = (h, m) => iso(at(1, h, m));
+    const sim = (id, h1, m1, h2, m2, mod) => ({ ...ev(id, 1, 8, "TD", mod, "FT" + id), start: at1(h1, m1), end: at1(h2, m2) });
+    const run = async evts => {
+      NET = { "/Home/GetCalendarData": JSON.stringify(evts) };
+      fsn.rmSync(CACHE, { force: true });
+      global.args.widgetParameter = "semaine"; global.config.widgetFamily = "large";
+      let err = null;
+      try { await load(); } catch (x) { err = x; }
+      return err;
+    };
+    // hauteur remplie par une pile verticale (taille fixe des enfants + spacers)
+    const filled = s => s.items.reduce((n, i) => n + (i.kind === "spacer" ? (i.length || 0) : i.size ? i.size.height : 0), 0);
+    const columns = () => {
+      const grid = global.widget.items.filter(i => i instanceof Object && i.kind === "stack").find(s => s.items.length > 5 && s.items[0].vertical);
+      return grid ? grid.items.filter(i => i.kind === "stack" && i.vertical).slice(1) : [];
+    };
+
+    let err = await run([sim("201", 10, 0, 12, 0, "Chimie"), sim("202", 11, 0, 13, 0, "Physique"), sim("203", 14, 0, 15, 0, "Biologie")]);
+    const t = global.texts();
+    ok("rendu semaine avec chevauchement", !err, err && err.message);
+    ok("les deux cours simultanés affichés", t.includes("Chimie") && t.includes("Physique"), JSON.stringify(t));
+    const rows = global.widget.all().filter(i => i.kind === "stack" && !i.vertical && i.items.filter(c => c.kind === "stack").length === 2 &&
+                                                  i.items.every(c => c.kind !== "stack" || c.vertical));
+    const row = rows.find(r => r.all().some(i => i.text === "Chimie"));
+    ok("Chimie et Physique dans la même rangée", !!row && row.all().some(i => i.text === "Physique"), rows.length + " rangées");
+    const lanes = row ? row.items.filter(c => c.kind === "stack") : [];
+    ok("sous-colonnes de même hauteur que la rangée", lanes.length === 2 && lanes.every(l => l.size.height === row.size.height && filled(l) === row.size.height),
+       JSON.stringify(lanes.map(l => [l.size, filled(l)])));
+    ok("sous-colonnes plus étroites que la colonne", lanes.every(l => 2 * l.size.width + 2 <= row.size.width), JSON.stringify(lanes.map(l => l.size)));
+    const cols = columns();
+    ok("chaque colonne du jour garde sa hauteur exacte", cols.length >= 5 && cols.every(c => Math.abs(filled(c) - c.size.height) < 0.01),
+       JSON.stringify(cols.map(c => [c.size && c.size.height, filled(c)])));
+
+    err = await run([sim("211", 9, 0, 11, 0, "Cours A"), sim("212", 9, 0, 11, 0, "Cours B"),
+                     sim("213", 9, 0, 11, 0, "Cours C"), sim("214", 9, 30, 10, 30, "Cours D")]);
+    const t4 = global.texts();
+    ok("4 cours simultanés : 2 affichés + « +2 »", !err && t4.includes("+2") && t4.includes("Cours A") && t4.includes("Cours B") &&
+       !t4.includes("Cours C"), (err && err.message) || JSON.stringify(t4));
     global.args.widgetParameter = "";
   }
 
