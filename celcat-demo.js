@@ -11,7 +11,7 @@
 //  Fichier généré par tools/build-demo.js : ne pas modifier à la main.
 // ============================================================
 
-const VERSION = "1.5.1";         // version de ce script (comparée à celle du dépôt)
+const VERSION = "1.5.2";         // version de ce script (comparée à celle du dépôt)
 const REPO = "https://github.com/Samito-05/cy-edt-widget";
 const REPO_RAW = "https://raw.githubusercontent.com/Samito-05/cy-edt-widget/main/celcat-widget.js";
 
@@ -1745,7 +1745,7 @@ async function settingsMenu() {
   const set = (k, v) => { PREFS[k] = v; savePrefs(); };
   const yes = b => (b ? "oui" : "non");
   const themes = [["auto", "automatique"], ["light", "clair"], ["dark", "sombre"]];
-  const reminders = [0, 5, 10, 15, 30];
+  const reminders = [0, 5, 10, 15, 20, 25, 30];
   for (;;) {
     const nHide = Array.isArray(PREFS.HIDE) ? PREFS.HIDE.length : 0;
     const nRen = PREFS.RENAME ? Object.keys(PREFS.RENAME).length : 0;
