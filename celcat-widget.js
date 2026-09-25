@@ -17,7 +17,7 @@
 //  - Ajoute un widget Scriptable (grand conseillé) et choisis ce script.
 // ============================================================
 
-const VERSION = "1.5.2";         // version de ce script (comparée à celle du dépôt)
+const VERSION = "1.5.3";         // version de ce script (comparée à celle du dépôt)
 const REPO = "https://github.com/Samito-05/cy-edt-widget";
 const REPO_RAW = "https://raw.githubusercontent.com/Samito-05/cy-edt-widget/main/celcat-widget.js";
 
@@ -1296,8 +1296,9 @@ async function scheduleReminders(events) {
       .filter(({ at }) => at > now && at <= horizon)
       .sort((a, b) => a.at - b.at)
       .slice(0, MAX_REMINDERS);   // iOS limite les notifications en attente, partagées avec les autres scripts
-    // la salle fait partie de l'identifiant → un changement de salle remplace le rappel
-    for (const { e, at } of due) wanted.set(`${REMIND_PREFIX}${e.key}|${e.start.getTime()}|${e.room}`, { e, at });
+    // la salle et le délai font partie de l'identifiant → un changement de salle ou du
+    // réglage « Rappel » remplace les rappels déjà planifiés
+    for (const { e, at } of due) wanted.set(`${REMIND_PREFIX}${e.key}|${e.start.getTime()}|${e.room}|${REMIND_BEFORE_MIN}`, { e, at });
   }
   const obsolete = ours.filter(id => !wanted.has(id));
   if (obsolete.length) await Notification.removePending(obsolete);
