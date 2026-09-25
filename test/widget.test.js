@@ -142,9 +142,11 @@ global.alerts = [];                 // menus présentés (libellés des actions)
 global.Alert = class {
   constructor() { this.actions = []; global.alerts.push(this); }
   addAction(l) { this.actions.push(l); } addCancelAction() {} addTextField() {} addSecureTextField() {}
-  async present() { return -1; }
+  textFieldValue(i) { return (global.fieldValues || [])[i] || ""; }
+  // réponses scriptées (index du bouton), sinon « Annuler »
+  async present() { const r = (global.alertAnswers || []).shift(); return r === undefined ? -1 : r; }
 };
-global.Script = { setWidget() {}, complete() {}, setShortcutOutput(o) { global.shortcutOut = o; } };
+global.Script = { name: () => "EDT CY", setWidget() {}, complete() {}, setShortcutOutput(o) { global.shortcutOut = o; } };
 global.config = { runsInWidget: true, widgetFamily: "large" };
 global.args = { widgetParameter: "" };
 
@@ -730,6 +732,75 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
   ok("1.1.0 = 1.1.0 → pas de mise à jour", !cmp.isNewer("1.1.0", "1.1.0"));
   ok("1.10.0 > 1.9.0 (comparaison numérique)", cmp.isNewer("1.10.0", "1.9.0"));
   ok("1.0.9 < 1.1.0", !cmp.isNewer("1.0.9", "1.1.0"));
+
+  // installation depuis le menu : réglages modifiés reportés, en-tête Scriptable gardé
+  {
+    const setVer = (s, v) => s.replace(/const VERSION = "[^"]+"/, `const VERSION = "${v}"`);
+    const header = "// Variables used by Scriptable.\n// icon-color: deep-blue; icon-glyph: calendar-alt;\n";
+    const base = setVer(widgetSrc, "1.0.0");
+    const mine = header + base.replace('const THEME = "auto";', 'const THEME = "dark";')
+                              .replace(/const HIDE = \[[\s\S]*?\n\];/, 'const HIDE = [\n  "Allemand",\n];');
+    const remote = setVer(widgetSrc, "9.9.9").replace("const FETCH_MIN = 15;", "const FETCH_MIN = 20;");
+    const scriptPath = pathn.join(dir, "EDT CY.js");
+    fsn.writeFileSync(scriptPath, mine);
+    global.module = { filename: scriptPath };
+    NET = { "/main/celcat-widget.js": remote, "/1.0.0/celcat-widget.js": base };
+    global.config.runsInWidget = false;
+    global.alerts = [];
+    global.alertAnswers = [9, 0, 0];             // menu → « Vérifier les mises à jour » → Installer → OK
+    await load("celcat-widget.js", s => setVer(s, "1.0.0").replace('const THEME = "auto";', 'const THEME = "dark";'));
+    const out = fsn.readFileSync(scriptPath, "utf8");
+    const done = global.alerts[global.alerts.length - 1] || {};
+    ok("menu : entrée 10 = mises à jour", /mises à jour/.test((global.alerts[0].actions || [])[9]), JSON.stringify(global.alerts[0].actions));
+    ok("mise à jour installée", /const VERSION = "9\.9\.9"/.test(out), (done.title || "") + " " + (done.message || ""));
+    ok("réglages modifiés reportés", /const THEME = "dark";/.test(out) && /"Allemand",/.test(out), out.slice(0, 200));
+    ok("réglage non modifié : nouvelle valeur par défaut", /const FETCH_MIN = 20;/.test(out));
+    ok("en-tête Scriptable conservé", out.startsWith(header));
+    ok("ancienne version sauvegardée", fsn.readFileSync(pathn.join(dir, "EDT CY-1.0.0.js.bak"), "utf8") === mine);
+    ok("pas d'alerte « autres modifications »", /THEME, HIDE/.test(done.message || "") && !/\.bak/.test(done.message || ""), done.message);
+
+    // version publiée cassée → fichier intact
+    fsn.writeFileSync(scriptPath, mine);
+    NET = { "/main/celcat-widget.js": setVer("const VERSION = \"9.9.9\";\nif (", "9.9.9"), "/1.0.0/celcat-widget.js": base };
+    global.alerts = []; global.alertAnswers = [9, 0, 0];
+    await load("celcat-widget.js", s => setVer(s, "1.0.0"));
+    ok("source invalide refusée, script intact", fsn.readFileSync(scriptPath, "utf8") === mine,
+       (global.alerts[global.alerts.length - 1] || {}).title);
+    global.alertAnswers = [];
+  }
+
+  // --- 21. premier lancement : assistant au lieu du menu
+  console.log("\n[21] premier lancement");
+  {
+    const saved = { ...keychain };
+    for (const k of Object.keys(keychain)) delete keychain[k];
+    global.alerts = []; global.notifications = [];
+    await load();
+    ok("sans identifiants : écran d'accueil", /Bienvenue/.test((global.alerts[0] || {}).title || "") && global.alerts.length === 1,
+       JSON.stringify(global.alerts.map(a => a.title)));
+    global.alerts = []; global.alertAnswers = [0, 0, 0]; global.fieldValues = ["etu2", "pw2", "87654321"];
+    NET = {};
+    await load();
+    ok("assistant : identifiants enregistrés", keychain.celcat_user === "etu2" && keychain.celcat_fid === "87654321");
+    ok("assistant : notification de test", global.notifications.some(n => /Notifications activées/.test(n.title || "")));
+    ok("assistant : consignes d'ajout du widget", global.alerts.some(a => /widget/.test(a.title || "")));
+    global.alertAnswers = []; global.fieldValues = [];
+    for (const k of Object.keys(keychain)) delete keychain[k];
+    Object.assign(keychain, saved);
+    global.config.runsInWidget = true;
+  }
+
+  // --- 22. installateur
+  console.log("\n[22] installateur");
+  {
+    const inst = fsn.readFileSync(pathn.join(__dirname, "..", "install.js"), "utf8");
+    let err = null;
+    try { new (Object.getPrototypeOf(async function () {}).constructor)(inst); } catch (e) { err = e; }
+    ok("install.js : syntaxe valide", !err, err && err.message);
+    ok("install.js : court (à coller sur iPhone)", inst.split("\n").length <= 30);
+    const readme = fsn.readFileSync(pathn.join(__dirname, "..", "README.md"), "utf8");
+    ok("README : même code que install.js", readme.includes(inst.trimEnd().split("\n").join("\n   ")));
+  }
 
   console.log(`\n${pass} OK, ${fail} FAIL`);
   process.exit(fail ? 1 : 0);
