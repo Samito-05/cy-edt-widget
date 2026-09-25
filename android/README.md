@@ -18,13 +18,16 @@ Scriptable n'existe pas sur Android : c'est donc une petite app native, avec ses
      | Choix | Affichage | Équivalent iOS |
      |---|---|---|
      | Jour actuel | Cours du jour, ou du prochain jour de cours | *(vide)* / `0` |
-     | Jour de cours suivant, 2ᵉ, 3ᵉ | Jours de cours suivants (pratique pour une pile de widgets) | `1`, `2`, `3` |
+     | Jour de cours suivant, 2ᵉ … 6ᵉ | Jours de cours suivants (pratique pour une pile de widgets) | `1` … `6` |
      | Semaine | Planning de la semaine (grand widget 4×4) : trait rouge sur l'heure actuelle, cours simultanés côte à côte | `semaine` |
      | Semaine suivante, dans 2 semaines | Semaines suivantes | `semaine 1`, `semaine 2` |
      | Prochain cours | Seulement le prochain cours et sa salle | `prochain` |
 
      Vue jour redimensionnable : cartes détaillées quand il y a la place, une ligne par cours sinon. En petite taille (2×2), le jour actuel passe en mode « live » : chaque cours disparaît 30 min après son début.
+   - **Semaine CY** : le même widget, directement en vue semaine (4×4).
    - **Prochain cours CY** : raccourci 2×2 pour le prochain cours et sa salle.
+
+   La vue de chaque widget se change aussi **dans l'app**, section **Widgets** (pratique si le lanceur ne propose pas « Paramètres »). Les boutons *Jour / Semaine / Prochain* de cette section ajoutent un widget sur l'écran d'accueil.
 
 Mise à jour : télécharger le nouvel APK et l'installer par-dessus (identifiants, réglages et cache conservés).
 

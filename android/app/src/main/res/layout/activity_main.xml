@@ -209,6 +209,60 @@
                 android:text="Ouvrir la semaine dans CELCAT" />
         </LinearLayout>
 
+        <!-- Widgets : vue de chaque widget + ajout sur l'écran d'accueil -->
+        <LinearLayout style="@style/Card">
+
+            <TextView
+                style="@style/SectionTitle"
+                android:text="Widgets" />
+
+            <TextView
+                android:id="@+id/widgets_hint"
+                style="@style/Hint" />
+
+            <LinearLayout
+                android:id="@+id/widgets_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <TextView
+                style="@style/Label"
+                android:text="Ajouter à l'écran d'accueil" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/add_day"
+                    style="@style/Btn.Tonal"
+                    android:layout_width="0dp"
+                    android:layout_marginTop="0dp"
+                    android:layout_weight="1"
+                    android:text="Jour" />
+
+                <Button
+                    android:id="@+id/add_week"
+                    style="@style/Btn.Tonal"
+                    android:layout_width="0dp"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginTop="0dp"
+                    android:layout_weight="1"
+                    android:text="Semaine" />
+
+                <Button
+                    android:id="@+id/add_next"
+                    style="@style/Btn.Tonal"
+                    android:layout_width="0dp"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginTop="0dp"
+                    android:layout_weight="1"
+                    android:text="Prochain" />
+            </LinearLayout>
+        </LinearLayout>
+
         <Button
             android:id="@+id/battery"
             style="@style/Btn.Warn"

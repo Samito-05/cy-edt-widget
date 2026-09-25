@@ -2,6 +2,9 @@ package fr.samito.cyedt
 
 import android.Manifest
 import android.app.Activity
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
@@ -16,6 +19,7 @@ import android.provider.Settings as SysSettings
 import android.text.format.DateUtils
 import android.view.View
 import android.view.animation.LinearInterpolator
+import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.CompoundButton
 import android.widget.EditText
@@ -88,6 +92,9 @@ class MainActivity : Activity() {
         v<View>(R.id.test_notif).setOnClickListener { askNotifications(); Notifs.test(this) }
         v<View>(R.id.battery).setOnClickListener { askBattery() }
         v<View>(R.id.repo).setOnClickListener { open("https://github.com/Samito-05/cy-edt-widget/releases") }
+        v<View>(R.id.add_day).setOnClickListener { pin(DayWidget::class.java) }
+        v<View>(R.id.add_week).setOnClickListener { pin(WeekWidget::class.java) }
+        v<View>(R.id.add_next).setOnClickListener { pin(NextWidget::class.java) }
     }
 
     override fun onResume() {
@@ -97,6 +104,46 @@ class MainActivity : Activity() {
         load(force = System.currentTimeMillis() - at > 2 * 60000)
         v<View>(R.id.battery).visibility =
             if (getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(packageName) == true) View.GONE else View.VISIBLE
+        showWidgets()
+    }
+
+    /** Section « Widgets » : chaque widget posé, avec sa vue modifiable ici (sans passer par le lanceur) */
+    private fun showWidgets() {
+        val ids = Widgets.viewIds(this)
+        val next = AppWidgetManager.getInstance(this).getAppWidgetIds(ComponentName(this, NextWidget::class.java)).size
+        v<TextView>(R.id.widgets_hint).text = when {
+            ids.isEmpty() && next == 0 -> "Aucun widget sur l'écran d'accueil. Ajoute-en un ci-dessous, ou appui long sur l'écran d'accueil → Widgets → EDT CY."
+            else -> "Même choix que le paramètre du widget iOS : jour actuel, jours de cours suivants, semaine, prochain cours." +
+                if (next > 0) "\n+ $next widget${if (next > 1) "s" else ""} « Prochain cours CY »." else ""
+        }
+        val list = v<LinearLayout>(R.id.widgets_list)
+        list.removeAllViews()
+        val options = WidgetView.OPTIONS
+        ids.forEachIndexed { i, id ->
+            val row = layoutInflater.inflate(R.layout.app_widget_row, list, false)
+            row.findViewById<TextView>(R.id.w_label).text = "Widget ${i + 1}"
+            val sp = row.findViewById<Spinner>(R.id.w_view)
+            sp.adapter = adapter(options.map { it.second })
+            val current = options.indexOfFirst { it.first == WidgetView.of(this, id) }.coerceAtLeast(0)
+            sp.setSelection(current, false)
+            sp.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(p: AdapterView<*>?, view: View?, pos: Int, rowId: Long) {
+                    if (options[pos].first == WidgetView.of(this@MainActivity, id)) return
+                    WidgetView.set(this@MainActivity, id, options[pos].first)
+                    Widgets.updateAll(this@MainActivity)
+                    Toast.makeText(this@MainActivity, "Widget ${i + 1} : ${options[pos].second}", Toast.LENGTH_SHORT).show()
+                }
+                override fun onNothingSelected(p: AdapterView<*>?) {}
+            }
+            list.addView(row)
+        }
+    }
+
+    /** Propose au lanceur d'ajouter un widget (Samsung : fenêtre « Ajouter à l'écran d'accueil ») */
+    private fun pin(cls: Class<out AppWidgetProvider>) {
+        val mgr = AppWidgetManager.getInstance(this)
+        if (!mgr.isRequestPinAppWidgetSupported || !mgr.requestPinAppWidget(ComponentName(this, cls), null, null))
+            Toast.makeText(this, "Appui long sur l'écran d'accueil → Widgets → EDT CY", Toast.LENGTH_LONG).show()
     }
 
     override fun onDestroy() { bg.shutdown(); super.onDestroy() }

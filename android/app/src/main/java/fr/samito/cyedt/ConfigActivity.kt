@@ -13,16 +13,7 @@ import android.widget.ListView
  * par appui long → Paramètres.
  */
 class ConfigActivity : Activity() {
-    private val options = listOf(
-        WidgetView.Day(0) to "Jour actuel (ou prochain jour de cours)",
-        WidgetView.Day(1) to "Jour de cours suivant",
-        WidgetView.Day(2) to "2ᵉ jour de cours suivant",
-        WidgetView.Day(3) to "3ᵉ jour de cours suivant",
-        WidgetView.WeekView(0) to "Semaine (grand widget)",
-        WidgetView.WeekView(1) to "Semaine suivante",
-        WidgetView.WeekView(2) to "Dans 2 semaines",
-        WidgetView.Next to "Prochain cours et sa salle",
-    )
+    private val options = WidgetView.OPTIONS
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
