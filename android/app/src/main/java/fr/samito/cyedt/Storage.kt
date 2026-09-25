@@ -1,5 +1,6 @@
 package fr.samito.cyedt
 
+import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -133,8 +134,25 @@ sealed class WidgetView(val code: String) {
             return if (m.groupValues[1] == "week") WeekView(n) else Day(n)
         }
 
+        /** Vues proposées (écran de choix et section « Widgets » de l'app), comme les paramètres iOS */
+        val OPTIONS: List<Pair<WidgetView, String>> = listOf(
+            Day(0) to "Jour actuel (ou prochain jour de cours)",
+            Day(1) to "Jour de cours suivant",
+        ) + (2..6).map { Day(it) to "${it}ᵉ jour de cours suivant" } + listOf(
+            WeekView(0) to "Semaine (grand widget)",
+            WeekView(1) to "Semaine suivante",
+            WeekView(2) to "Dans 2 semaines",
+            Next to "Prochain cours et sa salle",
+        )
+
         private fun prefs(ctx: Context) = ctx.getSharedPreferences("widgets", Context.MODE_PRIVATE)
-        fun of(ctx: Context, id: Int) = parse(prefs(ctx).getString("view_$id", null))
+
+        /** Vue du widget [id] ; sans choix enregistré, celle de son type (widget « Semaine CY » → semaine). */
+        fun of(ctx: Context, id: Int): WidgetView {
+            prefs(ctx).getString("view_$id", null)?.let { return parse(it) }
+            val cls = try { AppWidgetManager.getInstance(ctx).getAppWidgetInfo(id)?.provider?.className } catch (e: Exception) { null }
+            return if (cls == WeekWidget::class.java.name) WeekView(0) else Day(0)
+        }
         fun set(ctx: Context, id: Int, v: WidgetView) { prefs(ctx).edit().putString("view_$id", v.code).commit() }
         fun remove(ctx: Context, id: Int) { prefs(ctx).edit().remove("view_$id").apply() }
     }
