@@ -820,6 +820,22 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
     try { await load(); } catch (e) { err = e; }
     ok("réglages de mauvais type ignorés", !err && global.notifications.some(n => /dans 10 min/.test(n.title || "")),
        (err && err.message) || JSON.stringify(global.notifications.map(n => n.title)));
+
+    // Rappel changé (10 → 25 min) : les rappels déjà planifiés sont remplacés, pas seulement les nouveaux
+    const planned = global.notifications.filter(n => /dans 10 min/.test(n.title || "")).map(n => n.id);
+    const origPending = Notification.allPending, origRemove = Notification.removePending;
+    let removed = [];
+    Notification.allPending = async () => planned.map(identifier => ({ identifier }));
+    Notification.removePending = async ids => { removed = ids; };
+    fsn.writeFileSync(PREFS_PATH, JSON.stringify({ REMIND_BEFORE_MIN: 25 }));
+    fsn.rmSync(CACHE, { force: true }); global.notifications = [];
+    await load();
+    Notification.allPending = origPending; Notification.removePending = origRemove;
+    ok("réglage rappel 25 min : anciens rappels à 10 min retirés", planned.length > 0 && planned.every(id => removed.includes(id)),
+       JSON.stringify({ planned: planned.length, removed: removed.length }));
+    ok("réglage rappel 25 min : rappels replanifiés à 25 min",
+       global.notifications.length >= planned.length && global.notifications.every(n => !/dans \d+ min/.test(n.title || "") || /dans 25 min/.test(n.title)),
+       JSON.stringify(global.notifications.map(n => n.title)));
     fsn.writeFileSync(PREFS_PATH, "{ abîmé");
     err = null;
     try { await load(); } catch (e) { err = e; }
