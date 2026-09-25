@@ -28,11 +28,12 @@ Pas (encore) sur Android : vue semaine, copie dans le calendrier, écran verroui
 
 ## Compiler
 
-L'APK est compilé par GitHub Actions ([`.github/workflows/android.yml`](../.github/workflows/android.yml)) à chaque push qui touche `android/` (artefact `EDT-CY-apk`), et publié en Release pour chaque tag `android-v*` :
+L'APK est compilé par GitHub Actions ([`.github/workflows/android.yml`](../.github/workflows/android.yml)) à chaque push qui touche `android/` (artefact `EDT-CY-apk`). Il est publié en Release :
 
-```sh
-git tag android-v1.0.0 && git push origin android-v1.0.0
-```
+- automatiquement, au premier push d'une nouvelle `versionName` (dans `app/build.gradle.kts`) : la CI crée le tag `android-v<versionName>` ;
+- ou à la main, en poussant un tag `android-v*`.
+
+Pour sortir une nouvelle version : augmenter `versionCode` et `versionName`, puis pousser.
 
 En local (JDK 17 + SDK Android) :
 
