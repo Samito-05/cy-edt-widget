@@ -2,3 +2,6 @@
 # quelle que soit la plateforme du contributeur.
 * text=auto eol=lf
 *.png binary
+*.jar binary
+*.keystore binary
+*.bat eol=crlf
