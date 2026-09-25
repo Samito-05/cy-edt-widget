@@ -8,6 +8,8 @@ Tes cours directement sur l'écran d'accueil : horaires, salles, type de cours, 
 
 > Projet indépendant, sans aucun lien avec CY Tech / CYU. Tes identifiants restent sur ton iPhone.
 
+> **Android ?** Une app native avec les mêmes widgets existe : voir [`android/`](android/README.md).
+
 ![Widget en mode clair : vue journée, vue semaine, petit widget en direct et prochain cours](docs/preview-light.png)
 
 <details>
