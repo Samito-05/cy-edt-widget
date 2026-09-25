@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#FF131418</color>
+    <color name="card">#FF1E1F24</color>
+    <color name="text">#FFFFFFFF</color>
+    <color name="text_dim">#66FFFFFF</color>
+    <color name="sub">#FFD4D4DA</color>
+    <color name="sub_dim">#66D4D4DA</color>
+    <color name="muted">#FF8E8E96</color>
+    <color name="now">#FF34C759</color>
+    <color name="now_bg">#FF182A1F</color>
+    <color name="cancel">#FFFF9F0A</color>
+    <color name="bad">#FFFF453A</color>
+</resources>
