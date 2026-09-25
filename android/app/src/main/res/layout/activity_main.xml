@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/next"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="12dp"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/day_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="12dp"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/day_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:paddingTop="4dp"
+            android:textSize="12sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingTop="8dp">
+
+            <Button
+                android:id="@+id/refresh"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Actualiser" />
+
+            <Button
+                android:id="@+id/open_celcat"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Ouvrir CELCAT" />
+
+            <Button
+                android:id="@+id/copy_next"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Copier" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/unlock"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Débloquer et réessayer une fois"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/battery"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Autoriser la mise à jour en arrière-plan"
+            android:visibility="gone" />
+
+        <!-- Compte CY -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="24dp"
+            android:text="Compte CY"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="4dp"
+            android:text="Identifiants de celcat-calendar.cyu.fr, chiffrés sur le téléphone (Keystore Android). Numéro étudiant : le nombre après « fid0= » dans l'adresse de ton emploi du temps (tu peux coller l'adresse entière, ou laisser vide pour la détection automatique)."
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/user"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:autofillHints="username"
+            android:hint="Identifiant"
+            android:inputType="text" />
+
+        <EditText
+            android:id="@+id/pass"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:autofillHints="password"
+            android:hint="Mot de passe"
+            android:inputType="textPassword" />
+
+        <EditText
+            android:id="@+id/fid"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Numéro étudiant (fid0)"
+            android:inputType="textUri" />
+
+        <Button
+            android:id="@+id/save"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Enregistrer et se connecter" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="4dp"
+            android:text="Si CELCAT refuse le mot de passe, plus aucune tentative n'est envoyée tant qu'il n'a pas été modifié : ça évite de faire bloquer le compte CY."
+            android:textSize="12sp" />
+
+        <!-- Réglages -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="24dp"
+            android:text="Réglages"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
+            android:text="Thème des widgets" />
+
+        <Spinner
+            android:id="@+id/theme"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
+            android:text="Rappel avant chaque cours" />
+
+        <Spinner
+            android:id="@+id/remind"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <CheckBox
+            android:id="@+id/notify"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
+            android:text="Alerte si l'emploi du temps change (7 prochains jours)" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
+            android:text="Cours masqués (un par ligne : texte contenu dans la matière ou le type, ou /regex/i)" />
+
+        <EditText
+            android:id="@+id/hide"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Allemand"
+            android:inputType="textMultiLine"
+            android:minLines="2" />
+
+        <TextView
+            android:id="@+id/modules"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textIsSelectable="true"
+            android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
+            android:text="Matières renommées (une par ligne : Ancien = Nouveau)" />
+
+        <EditText
+            android:id="@+id/rename"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="I2GSIM07 = Statistiques"
+            android:inputType="textMultiLine"
+            android:minLines="2" />
+
+        <Button
+            android:id="@+id/save_settings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Enregistrer les réglages" />
+
+        <Button
+            android:id="@+id/test_notif"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Tester les notifications" />
+
+        <Button
+            android:id="@+id/repo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Mises à jour (GitHub)" />
+
+        <TextView
+            android:id="@+id/version"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="16dp"
+            android:textSize="11sp" />
+    </LinearLayout>
+</ScrollView>
