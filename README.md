@@ -8,7 +8,7 @@ Tes cours directement sur l'écran d'accueil : horaires, salles, type de cours, 
 
 > Projet indépendant, sans aucun lien avec CY Tech / CYU. Tes identifiants restent sur ton iPhone.
 
-> **Android ?** Une app native avec les mêmes widgets existe : voir [`android/`](android/README.md).
+> **Android ?** Une app native avec les mêmes vues existe (jour, jours suivants, semaine, prochain cours) et les mêmes réglages : voir [`android/`](android/README.md).
 
 ![Widget en mode clair : vue journée, vue semaine, petit widget en direct et prochain cours](docs/preview-light.png)
 
@@ -33,7 +33,7 @@ Tes cours directement sur l'écran d'accueil : horaires, salles, type de cours, 
 - **Prochain cours** — seulement le cours suivant et sa salle ; c'est aussi l'affichage automatique sur l'écran verrouillé.
 - **Cours annulés** grisés au lieu d'être masqués ; **fériés et vacances** affichés en bandeau, sans horaire ni rappel.
 - **Notifications** si l'emploi du temps change (salle, horaire, annulation, ajout) sur les 7 prochains jours.
-- **Rappel** 10 min avant chaque cours, avec la salle.
+- **Rappel** avant chaque cours, avec la salle : de 5 à 30 min (par pas de 5 min, 10 par défaut). Changer le délai replanifie aussi les rappels déjà programmés.
 - **Synchronisation calendrier** dans un calendrier iPhone dédié (« Cours CY »).
 - **Mode clair / sombre** automatique.
 - **Cours masqués** : une option non suivie ou le cours d'un autre groupe disparaît partout (widget, rappels, calendrier) via `HIDE`.
@@ -151,7 +151,7 @@ Aucune vérification n'est faite depuis un widget.
 
 ![Menu du script : Réglages, puis choix d'une matière à masquer](docs/preview-settings.png)
 
-Ils sont enregistrés à côté du cache (`celcat_settings.json`), survivent aux mises à jour, et sont pris en compte au prochain rafraîchissement du widget (rappels et calendrier compris).
+Ils sont enregistrés à côté du cache (`celcat_settings.json`), survivent aux mises à jour, et sont pris en compte au prochain rafraîchissement du widget (rappels et calendrier compris : un nouveau délai de rappel remplace les rappels déjà planifiés).
 
 Réglages avancés : à modifier en haut de `celcat-widget.js`. Pour ceux écrits `pref("…", valeur)`, la valeur est celle par défaut ; celle choisie dans le menu passe devant. `HIDE` et `RENAME` s'ajoutent à ceux du menu.
 

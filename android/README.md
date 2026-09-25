@@ -39,7 +39,17 @@ Comme la version iOS : couleurs par type (CM rouge, TD bleu, TP violet, examen o
 
 Option **compte à rebours** (Réglages) : « dans 12:34 » dans l'heure avant un cours, sur le widget prochain cours et le petit widget live.
 
+L'app : prochain cours en grand (« En cours », « Dans 12 min », salle), liste du jour avec la couleur de chaque matière, cours annulés barrés, erreur de connexion bien visible. Le thème, le rappel et les interrupteurs s'appliquent dès qu'on les change (rappels replanifiés, widgets redessinés) ; le bouton « Enregistrer » ne sert qu'aux cours masqués et matières renommées.
+
 Pas sur Android : copie dans le calendrier, et écran verrouillé (One UI n'accepte pas les widgets d'autres apps sur l'écran verrouillé ; le rappel avant chaque cours s'en rapproche). La vue semaine est dessinée en image : si le mode sombre change, elle suit au rafraîchissement suivant (15 min au plus).
+
+## Versions
+
+- **1.2.2** — réglages (thème, rappel, interrupteurs) appliqués immédiatement.
+- **1.2.1** — rappel de 5 à 30 min par pas de 5 min.
+- **1.2.0** — widget « Semaine CY », section « Widgets » dans l'app (vue de chaque widget, boutons d'ajout), jours de cours suivants jusqu'au 6ᵉ.
+- **1.1.1** — correction de la connexion à CELCAT (la session n'était plus reconnue après le premier téléchargement) et nouvel écran de l'app. Les verrous « Connexion non confirmée » posés à cause de ce bug sautent à la mise à jour.
+- **1.1.0** — vue au choix pour chaque widget, vue semaine, compte à rebours.
 
 ## Compiler
 
