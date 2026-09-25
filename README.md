@@ -143,7 +143,7 @@ Aucune vérification n'est faite depuis un widget.
 **Le plus simple : menu du script → « Réglages »**, sans toucher au code :
 
 - thème (automatique / clair / sombre) ;
-- rappel avant chaque cours (non, 5, 10, 15 ou 30 min) ;
+- rappel avant chaque cours (non, ou de 5 à 30 min par pas de 5 min) ;
 - alerte si l'emploi du temps change ; copie dans le calendrier iPhone ; compte à rebours avant un cours ;
 - **cours masqués** : choisis une matière dans ta liste de cours, ou tape un texte (`Allemand`, `Sport`…) ;
 - **matières renommées** : choisis une matière (ou tape un code comme `I2GSIM07`) et donne-lui un nouveau nom ;
