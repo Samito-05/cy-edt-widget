@@ -17,7 +17,7 @@
 //  - Ajoute un widget Scriptable (grand conseillé) et choisis ce script.
 // ============================================================
 
-const VERSION = "1.5.0";         // version de ce script (comparée à celle du dépôt)
+const VERSION = "1.5.1";         // version de ce script (comparée à celle du dépôt)
 const REPO = "https://github.com/Samito-05/cy-edt-widget";
 const REPO_RAW = "https://raw.githubusercontent.com/Samito-05/cy-edt-widget/main/celcat-widget.js";
 
