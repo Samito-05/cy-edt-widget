@@ -13,4 +13,19 @@
     <color name="cancel">#FFD95A00</color>
     <color name="bad">#FFFF3B30</color>
     <color name="brand">#FF0A3D91</color>
+
+    <!-- Écran de l'app -->
+    <color name="app_bg">#FFF4F5F9</color>
+    <color name="app_card">#FFFFFFFF</color>
+    <color name="app_text">#FF14161C</color>
+    <color name="app_sub">#FF5E6270</color>
+    <color name="app_line">#FFE4E6EE</color>
+    <color name="app_field">#FFF1F2F7</color>
+    <color name="accent">#FF1E5BD8</color>
+    <color name="accent_tonal">#FFE3EBFD</color>
+    <color name="on_accent">#FFFFFFFF</color>
+    <color name="hero_start">#FF0A3D91</color>
+    <color name="hero_end">#FF2F6FE8</color>
+    <color name="warn_bg">#FFFFF1E0</color>
+    <color name="warn_text">#FF9A4A00</color>
 </resources>
