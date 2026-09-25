@@ -1687,7 +1687,7 @@ async function hideMenu() {
   for (;;) {
     const list = Array.isArray(PREFS.HIDE) ? PREFS.HIDE : [];
     const mods = knownModules();
-    const labels = [...list.map(h => `✕ ${h}`), ...(mods.length ? ["Choisir dans mon emploi du temps…"] : []), "Taper un nom…"];
+    const labels = [...list.map(h => `✕ ${h}`), ...(mods.length ? ["Choisir une matière…"] : []), "Taper un nom…"];
     const c = await pick("Cours masqués",
       "Masqués partout : widget, rappels, notifications, calendrier. Touche ✕ pour afficher de nouveau.", labels);
     if (c === -1) return;
@@ -1712,7 +1712,7 @@ async function renameMenu() {
     const map = PREFS.RENAME && typeof PREFS.RENAME === "object" ? PREFS.RENAME : {};
     const keys = Object.keys(map);
     const mods = knownModules().filter(m => !Object.values(map).includes(m));
-    const labels = [...keys.map(k => `✕ ${k} → ${map[k]}`), ...(mods.length ? ["Choisir dans mon emploi du temps…"] : []),
+    const labels = [...keys.map(k => `✕ ${k} → ${map[k]}`), ...(mods.length ? ["Choisir une matière…"] : []),
                     "Taper un code ou un nom…"];
     const c = await pick("Matières renommées", "Touche ✕ pour revenir au nom d'origine.", labels);
     if (c === -1) return;
@@ -1754,17 +1754,17 @@ async function settingsMenu() {
         const c = await pick("Thème", null, themes.map(t => t[1]));
         if (c !== -1) set("THEME", themes[c][0]);
       }],
-      [`Rappel avant chaque cours : ${cur("REMIND_BEFORE_MIN") ? cur("REMIND_BEFORE_MIN") + " min" : "non"}`, async () => {
+      [`Rappel : ${cur("REMIND_BEFORE_MIN") ? cur("REMIND_BEFORE_MIN") + " min avant" : "non"}`, async () => {
         const c = await pick("Rappel avant chaque cours", "Notification avec la salle.",
                              reminders.map(m => (m ? `${m} min avant` : "Pas de rappel")));
         if (c !== -1) set("REMIND_BEFORE_MIN", reminders[c]);
       }],
-      [`Alerte si l'emploi du temps change : ${yes(cur("NOTIFY_CHANGES"))}`, () => set("NOTIFY_CHANGES", !cur("NOTIFY_CHANGES"))],
-      [`Copie dans le calendrier iPhone : ${yes(cur("SYNC_CALENDAR"))}`, () => set("SYNC_CALENDAR", !cur("SYNC_CALENDAR"))],
-      [`Compte à rebours avant un cours : ${yes(cur("SHOW_COUNTDOWN"))}`, () => set("SHOW_COUNTDOWN", !cur("SHOW_COUNTDOWN"))],
+      [`Alerte si changement : ${yes(cur("NOTIFY_CHANGES"))}`, () => set("NOTIFY_CHANGES", !cur("NOTIFY_CHANGES"))],
+      [`Calendrier iPhone : ${yes(cur("SYNC_CALENDAR"))}`, () => set("SYNC_CALENDAR", !cur("SYNC_CALENDAR"))],
+      [`Compte à rebours : ${yes(cur("SHOW_COUNTDOWN"))}`, () => set("SHOW_COUNTDOWN", !cur("SHOW_COUNTDOWN"))],
       [`Cours masqués (${nHide})`, hideMenu],
       [`Matières renommées (${nRen})`, renameMenu],
-      ["Rétablir les réglages par défaut", () => { for (const k of Object.keys(PREFS)) delete PREFS[k]; savePrefs(); }],
+      ["Tout remettre par défaut", () => { for (const k of Object.keys(PREFS)) delete PREFS[k]; savePrefs(); }],
     ];
     const a = new Alert();
     a.title = "Réglages";
