@@ -89,6 +89,14 @@ class MainActivity : Activity() {
             Toast.makeText(this, txt, Toast.LENGTH_LONG).show()
         }
         v<View>(R.id.save_settings).setOnClickListener { saveSettings() }
+        // Thème, rappel et interrupteurs : appliqués tout de suite (rappels replanifiés, widgets redessinés)
+        listOf(R.id.theme, R.id.remind).forEach { id ->
+            v<Spinner>(id).onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(p: AdapterView<*>?, view: View?, pos: Int, rowId: Long) = applyQuick()
+                override fun onNothingSelected(p: AdapterView<*>?) {}
+            }
+        }
+        listOf(R.id.notify, R.id.countdown).forEach { id -> v<CompoundButton>(id).setOnCheckedChangeListener { _, _ -> applyQuick() } }
         v<View>(R.id.test_notif).setOnClickListener { askNotifications(); Notifs.test(this) }
         v<View>(R.id.battery).setOnClickListener { askBattery() }
         v<View>(R.id.repo).setOnClickListener { open("https://github.com/Samito-05/cy-edt-widget/releases") }
@@ -288,6 +296,24 @@ class MainActivity : Activity() {
         load(force = true)
     }
 
+    /** Réglages sans texte à saisir : enregistrés et appliqués dès qu'ils changent */
+    private fun applyQuick() {
+        val theme = themes[v<Spinner>(R.id.theme).selectedItemPosition].first
+        val remind = reminds[v<Spinner>(R.id.remind).selectedItemPosition]
+        val notify = v<CompoundButton>(R.id.notify).isChecked
+        val countdown = v<CompoundButton>(R.id.countdown).isChecked
+        // Appel initial du Spinner à l'ouverture : rien n'a changé
+        if (theme == settings.theme && remind == settings.remindMin && notify == settings.notifyChanges && countdown == settings.countdown) return
+        val remindChanged = remind != settings.remindMin
+        settings.theme = theme; settings.remindMin = remind
+        settings.notifyChanges = notify; settings.countdown = countdown
+        val list = courses
+        bg.execute { try { Notifs.reminders(this, list) } catch (e: Exception) {} }
+        Widgets.updateAll(this)
+        if (remindChanged) Toast.makeText(this,
+            if (remind == 0) "Rappels désactivés" else "Rappels replanifiés : $remind min avant chaque cours", Toast.LENGTH_SHORT).show()
+    }
+
     private fun saveSettings() {
         settings.theme = themes[v<Spinner>(R.id.theme).selectedItemPosition].first
         settings.remindMin = reminds[v<Spinner>(R.id.remind).selectedItemPosition]
@@ -297,7 +323,8 @@ class MainActivity : Activity() {
         settings.renameText = v<EditText>(R.id.rename).text.toString()
         val r = Edt.celcat(this).cached()
         show(r)
-        bg.execute { try { Notifs.reminders(this, courses) } catch (e: Exception) {} }
+        val list = courses
+        bg.execute { try { Notifs.reminders(this, list) } catch (e: Exception) {} }
         Widgets.updateAll(this)
         Toast.makeText(this, "Réglages enregistrés", Toast.LENGTH_SHORT).show()
     }
