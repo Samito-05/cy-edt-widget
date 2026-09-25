@@ -101,6 +101,9 @@ class Settings(ctx: Context) {
     var notifyChanges: Boolean
         get() = p.getBoolean("notify", true)
         set(v) { p.edit().putBoolean("notify", v).apply() }
+    var countdown: Boolean                              // compte à rebours « dans 12:34 » dans l'heure avant un cours
+        get() = p.getBoolean("countdown", false)
+        set(v) { p.edit().putBoolean("countdown", v).apply() }
     var hideText: String                                // une règle par ligne
         get() = p.getString("hide", "") ?: ""
         set(v) { p.edit().putString("hide", v).apply() }
@@ -115,4 +118,24 @@ class Settings(ctx: Context) {
             if (i <= 0) null else l.substring(0, i).trim() to l.substring(i + 1).trim()
         }.filter { it.first.isNotEmpty() && it.second.isNotEmpty() }.toMap(),
     )
+}
+
+/** Vue choisie pour chaque widget « EDT CY » (équivalent du paramètre du widget iOS). */
+sealed class WidgetView(val code: String) {
+    data class Day(val offset: Int) : WidgetView("day:$offset")      // 0 : jour actuel, 1, 2… : jours de cours suivants
+    data class WeekView(val offset: Int) : WidgetView("week:$offset")
+    object Next : WidgetView("next")
+
+    companion object {
+        fun parse(s: String?): WidgetView {
+            val m = Regex("^(day|week):(\\d+)$").find(s ?: "") ?: return if (s == "next") Next else Day(0)
+            val n = m.groupValues[2].toInt()
+            return if (m.groupValues[1] == "week") WeekView(n) else Day(n)
+        }
+
+        private fun prefs(ctx: Context) = ctx.getSharedPreferences("widgets", Context.MODE_PRIVATE)
+        fun of(ctx: Context, id: Int) = parse(prefs(ctx).getString("view_$id", null))
+        fun set(ctx: Context, id: Int, v: WidgetView) { prefs(ctx).edit().putString("view_$id", v.code).commit() }
+        fun remove(ctx: Context, id: Int) { prefs(ctx).edit().remove("view_$id").apply() }
+    }
 }

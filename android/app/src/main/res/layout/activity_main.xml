@@ -172,6 +172,12 @@
             android:paddingTop="8dp"
             android:text="Alerte si l'emploi du temps change (7 prochains jours)" />
 
+        <CheckBox
+            android:id="@+id/countdown"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Compte à rebours « dans 12:34 » dans l'heure avant un cours" />
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

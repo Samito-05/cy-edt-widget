@@ -243,3 +243,42 @@ class CelcatTest {
         assertEquals(Celcat.NO_CREDS_MSG, c.getEvents().error)
     }
 }
+
+class WeekTest {
+    private fun week(vararg e: JSONObject) = Parser.parseAll(JSONArray().apply { e.forEach { put(it) } })
+
+    @Test fun modelPicksWeekAndRange() {
+        val c = week(
+            ev(1, "2026-09-21T08:30:00", "2026-09-21T10:00:00", "TD<br />Stats"),
+            ev(2, "2026-09-24T13:00:00", "2026-09-24T17:15:00", "TD<br />Anglais"),
+            ev(3, "2026-09-29T09:00:00", "2026-09-29T10:00:00", "TD<br />Maths"),
+            ev(4, "2026-09-25T00:00:00", null, "Férié", "Férié"),
+        )
+        val m = Week.model(c, at("2026-09-23T12:00:00"), 0, java.time.LocalDate.parse("2026-10-07"))
+        assertEquals(java.time.LocalDate.parse("2026-09-21"), m.monday)
+        assertEquals(5, m.days.size)
+        assertEquals(8 * 60, m.startMin); assertEquals(18 * 60, m.endMin)
+        assertEquals(2, m.courses.size)
+        assertNotNull(m.allDay[java.time.LocalDate.parse("2026-09-25")])
+        // Plus de cours cette semaine → semaine suivante
+        assertEquals(java.time.LocalDate.parse("2026-09-28"), Week.model(c, at("2026-09-24T18:00:00"), 0, java.time.LocalDate.parse("2026-10-07")).monday)
+        assertTrue(Week.model(c, at("2026-09-23T12:00:00"), 3, java.time.LocalDate.parse("2026-10-07")).beyond)
+    }
+
+    @Test fun overlappingCoursesShareLanes() {
+        val c = week(
+            ev(1, "2026-09-21T08:00:00", "2026-09-21T10:00:00", "TP<br />A", "TP"),
+            ev(2, "2026-09-21T08:00:00", "2026-09-21T10:00:00", "TP<br />B", "TP"),
+            ev(3, "2026-09-21T09:00:00", "2026-09-21T11:00:00", "TP<br />C", "TP"),
+            ev(4, "2026-09-21T13:00:00", "2026-09-21T14:00:00", "TD<br />D"),
+        )
+        val y = { d: LocalDateTime -> ((d.hour * 60 + d.minute) - 8 * 60).toFloat() }   // 1 px / min
+        val g = Week.layoutDay(c, y, 600f)
+        assertEquals(2, g.size)
+        assertEquals(0f, g[0].top); assertEquals(180f, g[0].h)
+        assertEquals(1, g[0].lanes.size)                     // 3 colonnes → 1 affichée + « +2 »
+        assertEquals(2, g[0].hidden.size)
+        assertEquals(300f, g[1].top)
+        assertEquals(1, g[1].lanes[0].size)
+    }
+}

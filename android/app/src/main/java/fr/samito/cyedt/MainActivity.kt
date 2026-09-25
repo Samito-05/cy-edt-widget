@@ -61,6 +61,7 @@ class MainActivity : Activity() {
             reminds.map { if (it == 0) "Pas de rappel" else "$it min avant" })
         v<Spinner>(R.id.remind).setSelection(reminds.indexOf(settings.remindMin).coerceAtLeast(0))
         v<CheckBox>(R.id.notify).isChecked = settings.notifyChanges
+        v<CheckBox>(R.id.countdown).isChecked = settings.countdown
         v<EditText>(R.id.hide).setText(settings.hideText)
         v<EditText>(R.id.rename).setText(settings.renameText)
 
@@ -154,6 +155,7 @@ class MainActivity : Activity() {
         settings.theme = themes[v<Spinner>(R.id.theme).selectedItemPosition].first
         settings.remindMin = reminds[v<Spinner>(R.id.remind).selectedItemPosition]
         settings.notifyChanges = v<CheckBox>(R.id.notify).isChecked
+        settings.countdown = v<CheckBox>(R.id.countdown).isChecked
         settings.hideText = v<EditText>(R.id.hide).text.toString()
         settings.renameText = v<EditText>(R.id.rename).text.toString()
         val r = Edt.celcat(this).cached()
