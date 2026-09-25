@@ -138,7 +138,18 @@ Aucune vérification n'est faite depuis un widget.
 
 ## Réglages
 
-À modifier en haut de `celcat-widget.js` :
+**Le plus simple : menu du script → « Réglages »**, sans toucher au code :
+
+- thème (automatique / clair / sombre) ;
+- rappel avant chaque cours (non, 5, 10, 15 ou 30 min) ;
+- alerte si l'emploi du temps change ; copie dans le calendrier iPhone ; compte à rebours avant un cours ;
+- **cours masqués** : choisis une matière dans ta liste de cours, ou tape un texte (`Allemand`, `Sport`…) ;
+- **matières renommées** : choisis une matière (ou tape un code comme `I2GSIM07`) et donne-lui un nouveau nom ;
+- retour aux réglages par défaut.
+
+Ils sont enregistrés à côté du cache (`celcat_settings.json`), survivent aux mises à jour, et sont pris en compte au prochain rafraîchissement du widget (rappels et calendrier compris).
+
+Réglages avancés : à modifier en haut de `celcat-widget.js`. Pour ceux écrits `pref("…", valeur)`, la valeur est celle par défaut ; celle choisie dans le menu passe devant. `HIDE` et `RENAME` s'ajoutent à ceux du menu.
 
 | Constante | Défaut | Rôle |
 |---|---|---|
@@ -164,6 +175,7 @@ Aucune vérification n'est faite depuis un widget.
 Lancer le script depuis Scriptable ouvre un menu :
 
 - aperçus (grand / moyen / petit widget, vue semaine, prochain cours, écran verrouillé) ;
+- **Réglages** (thème, rappels, notifications, calendrier, cours masqués, matières renommées) ;
 - **Vérifier les mises à jour** (et installer la nouvelle version) ;
 - **Changer mes identifiants** (libère aussi le verrou après un refus) ;
 - **Débloquer et réessayer une fois** (proposé uniquement après un refus d'identifiants) ;
