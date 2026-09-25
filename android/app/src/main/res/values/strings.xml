@@ -2,7 +2,9 @@
 <resources>
     <string name="app_name">EDT CY</string>
     <string name="widget_day">EDT CY</string>
+    <string name="widget_week">Semaine CY</string>
     <string name="widget_next">Prochain cours CY</string>
     <string name="widget_day_desc">Jour, jours suivants, semaine ou prochain cours : au choix</string>
+    <string name="widget_week_desc">Planning de la semaine (grand widget 4×4)</string>
     <string name="widget_next_desc">Le prochain cours et sa salle</string>
 </resources>
