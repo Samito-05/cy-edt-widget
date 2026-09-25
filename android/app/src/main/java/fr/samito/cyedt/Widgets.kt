@@ -56,7 +56,7 @@ object Widgets {
     fun updateAll(ctx: Context) {
         val app = ctx.applicationContext
         val mgr = AppWidgetManager.getInstance(app)
-        val day = mgr.getAppWidgetIds(ComponentName(app, DayWidget::class.java))
+        val day = viewIds(app)
         val next = mgr.getAppWidgetIds(ComponentName(app, NextWidget::class.java))
         if (day.isEmpty() && next.isEmpty()) return
         val r = Edt.celcat(app).cached()
@@ -65,6 +65,13 @@ object Widgets {
         day.forEach { update(app, mgr, it, courses, r, now) }
         next.forEach { mgr.updateAppWidget(it, nextViews(app, courses, r.stale, r.authBad, r.error, now)) }
         Edt.scheduleRedraw(app, Schedule.nextRedraw(courses, now, Settings(app).countdown))
+    }
+
+    /** Widgets dont la vue se choisit (« EDT CY » et « Semaine CY »), dans l'ordre d'ajout */
+    fun viewIds(ctx: Context): IntArray {
+        val mgr = AppWidgetManager.getInstance(ctx)
+        return (mgr.getAppWidgetIds(ComponentName(ctx, DayWidget::class.java)) +
+            mgr.getAppWidgetIds(ComponentName(ctx, WeekWidget::class.java))).sortedArray()
     }
 
     /** Widget « EDT CY » : la vue choisie à sa création (jour, jour +N, semaine, prochain cours) */
@@ -321,6 +328,14 @@ object Widgets {
 
 /** Widget « EDT CY » : jour, jours suivants, semaine ou prochain cours (choisi à l'ajout). */
 class DayWidget : AppWidgetProvider() {
+    override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) = refresh(ctx)
+    override fun onAppWidgetOptionsChanged(ctx: Context, mgr: AppWidgetManager, id: Int, opts: Bundle) = Widgets.updateAll(ctx)
+    override fun onEnabled(ctx: Context) = Edt.schedule(ctx)
+    override fun onDeleted(ctx: Context, ids: IntArray) = ids.forEach { WidgetView.remove(ctx, it) }
+}
+
+/** Widget « Semaine CY » : même widget que « EDT CY », en vue semaine par défaut (grand format). */
+class WeekWidget : AppWidgetProvider() {
     override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) = refresh(ctx)
     override fun onAppWidgetOptionsChanged(ctx: Context, mgr: AppWidgetManager, id: Int, opts: Bundle) = Widgets.updateAll(ctx)
     override fun onEnabled(ctx: Context) = Edt.schedule(ctx)
