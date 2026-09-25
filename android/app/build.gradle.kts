@@ -13,8 +13,8 @@ android {
         applicationId = "fr.samito.cyedt"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.1.1"
     }
 
     // Clé de signature publique, commune à toutes les compilations : chaque nouvel APK
