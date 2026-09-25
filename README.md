@@ -147,6 +147,8 @@ Aucune vérification n'est faite depuis un widget.
 - **matières renommées** : choisis une matière (ou tape un code comme `I2GSIM07`) et donne-lui un nouveau nom ;
 - retour aux réglages par défaut.
 
+![Menu du script : Réglages, puis choix d'une matière à masquer](docs/preview-settings.png)
+
 Ils sont enregistrés à côté du cache (`celcat_settings.json`), survivent aux mises à jour, et sont pris en compte au prochain rafraîchissement du widget (rappels et calendrier compris).
 
 Réglages avancés : à modifier en haut de `celcat-widget.js`. Pour ceux écrits `pref("…", valeur)`, la valeur est celle par défaut ; celle choisie dans le menu passe devant. `HIDE` et `RENAME` s'ajoutent à ceux du menu.

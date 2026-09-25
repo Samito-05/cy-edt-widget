@@ -228,7 +228,31 @@
   footer { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--page-line); color: var(--page-sub); font-size: 14px; }
   footer a { color: inherit; }
 
-  /* Mode capture : ?shot=light|dark|lock — un seul panneau, plein cadre, pour les PNG du README */
+  /* ---------- alertes Scriptable (menu du script) : UIAlertController iOS, 270 pt de large ---------- */
+  .panel.menus { background: linear-gradient(135deg, #DCDDEB 0%, #E4DDEA 45%, #EDDCE3 100%); }
+  .alert {
+    width: calc(270 * var(--u)); box-sizing: border-box;
+    background: rgba(246, 246, 248, 0.94);
+    border-radius: calc(14 * var(--u));
+    box-shadow: 0 calc(10 * var(--u)) calc(30 * var(--u)) rgba(20, 14, 40, 0.22);
+    overflow: hidden; color: #000;
+    font-family: -apple-system, "SF Pro Text", var(--font);
+  }
+  .alert .a-head { padding: calc(19 * var(--u)) calc(16 * var(--u)) calc(18 * var(--u)); text-align: center; }
+  .alert .a-title { font-weight: 600; font-size: calc(17 * var(--u)); line-height: 1.3; }
+  .alert .a-msg { font-size: calc(13 * var(--u)); line-height: 1.35; margin-top: calc(3 * var(--u)); }
+  .alert .btn {
+    height: calc(44 * var(--u)); display: flex; align-items: center; justify-content: center;
+    border-top: calc(0.5 * var(--u)) solid rgba(60, 60, 67, 0.29);
+    color: #007AFF; font-size: calc(17 * var(--u)); white-space: nowrap; padding: 0 calc(10 * var(--u));
+  }
+  .alert .btn.cancel { font-weight: 600; }
+  .alert .btn.pressed { background: rgba(0, 0, 0, 0.09); }
+  .menus .caption { color: #6C6880; }
+  .menus .step { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+                 border-radius: 50%; background: #007AFF; color: #fff; font-size: 13px; margin-right: 8px; }
+
+  /* Mode capture : ?shot=light|dark|lock|settings — un seul panneau, plein cadre, pour les PNG du README */
   body.shot { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
   body.shot .wrap { max-width: none; padding: 0; }
   body.shot .intro, body.shot .panel-title, body.shot footer { display: none; }
@@ -254,6 +278,9 @@
 
   <div class="panel-title"><h2>Écran verrouillé</h2><span>bandeau au-dessus de l'heure, rectangle et rond</span></div>
   <section class="panel lock" id="panel-lock"></section>
+
+  <div class="panel-title"><h2>Réglages</h2><span>menu du script dans Scriptable — tout se règle sans toucher au code</span></div>
+  <section class="panel menus" id="panel-settings"></section>
 
   <footer>
     Aperçus régénérables : ouvrir <code>docs/preview.html</code> dans un navigateur et capturer chaque panneau.
@@ -593,7 +620,9 @@
 
   function tile(node, caption) {
     const t = el("div", "tile");
-    t.append(node, el("div", "caption", caption));
+    const c = el("div", "caption");
+    c.append(caption);               // texte ou élément
+    t.append(node, c);
     return t;
   }
 
@@ -633,6 +662,46 @@
   row.append(rect, circ);
   ls.append(row);
   lock.append(ls);
+
+  // réglages : libellés repris de settingsMenu / hideMenu dans celcat-widget.js
+  // actions : [libellé, "cancel" | "pressed" | ""]
+  function alertBox(title, msg, actions) {
+    const a = el("div", "alert");
+    const head = el("div", "a-head");
+    head.append(el("div", "a-title", title));
+    if (msg) head.append(el("div", "a-msg", msg));
+    a.append(head);
+    actions.forEach(([label, kind]) => a.append(el("div", "btn" + (kind ? " " + kind : ""), label)));
+    return a;
+  }
+  function stepCaption(n, text) {
+    const c = el("span");
+    c.append(el("span", "step", String(n)), document.createTextNode(text));
+    return c;
+  }
+  const settings = document.getElementById("panel-settings");
+  const srow = el("div", "row");
+  srow.append(
+    tile(alertBox("Widget CELCAT", null, [
+      ["Aperçu grand widget"], ["Aperçu widget moyen"], ["Aperçu petit widget"], ["Aperçu vue semaine"],
+      ["Aperçu prochain cours"], ["Aperçu écran verrouillé"], ["Réglages", "pressed"], ["Changer mes identifiants"],
+      ["Tester les notifications"], ["Données brutes (debug)"], ["Vérifier les mises à jour"], ["Fermer", "cancel"],
+    ]), stepCaption(1, "Lancer le script")),
+    tile(alertBox("Réglages", "Touche une ligne pour la modifier.", [
+      ["Thème : automatique"], ["Rappel : 10 min avant"], ["Alerte si changement : oui"], ["Calendrier iPhone : oui"],
+      ["Compte à rebours : non"], ["Cours masqués (1)", "pressed"], ["Matières renommées (0)"],
+      ["Tout remettre par défaut"], ["Terminé", "cancel"],
+    ]), stepCaption(2, "Choisir un réglage")),
+    tile(alertBox("Masquer quelle matière ?", null, [
+      ["Anglais"], ["Économie"], ["Statistiques"], ["Test logiciel", "pressed"], ["Retour", "cancel"],
+    ]), stepCaption(3, "Cours masqués → choisir une matière")),
+  );
+  settings.append(srow);
+  // iOS réduit le texte d'un bouton trop long (jusqu'à 75 %) : même chose ici
+  settings.querySelectorAll(".btn").forEach(b => {
+    let s = 1;
+    while (b.scrollWidth > b.clientWidth && s > 0.75) { s -= 0.02; b.style.fontSize = `calc(${17 * s} * var(--u))`; }
+  });
 
   if (shot) {
     const keep = document.getElementById("panel-" + shot);
