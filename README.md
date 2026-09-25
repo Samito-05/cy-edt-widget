@@ -45,15 +45,47 @@ Tes cours directement sur l'écran d'accueil : horaires, salles, type de cours, 
 > `accessoryCircular`, `accessoryInline`) et le marquage « libre / occupé » dans le
 > calendrier en dépendent. Sur iOS 15, seuls les widgets d'écran d'accueil fonctionnent.
 
+### Installation rapide (conseillée)
+
 1. Installer **Scriptable** depuis l'App Store.
-2. Copier le contenu de [`celcat-widget.js`](celcat-widget.js).
-3. Dans Scriptable : `+` → coller le script → le nommer par ex. `EDT CY`.
-4. **Lancer le script une fois dans l'app** et choisir « Changer mes identifiants » :
+2. Dans Scriptable : `+` → coller le script d'installation ci-dessous (bouton « copier » en haut à droite du bloc) → ▶︎.
+
+   ```js
+   // Installe (ou réinstalle) le widget emploi du temps CY dans Scriptable.
+   // Coller dans un nouveau script Scriptable, le lancer, puis le supprimer.
+   const NAME = "EDT CY";
+   const URL = "https://raw.githubusercontent.com/Samito-05/cy-edt-widget/main/celcat-widget.js";
+   let fm = FileManager.local();
+   try { if (module.filename.startsWith(FileManager.iCloud().documentsDirectory())) fm = FileManager.iCloud(); } catch (e) {}
+   const path = fm.joinPath(module.filename.replace(/\/[^/]*$/, ""), NAME + ".js");
+   const req = new Request(URL); req.timeoutInterval = 20;
+   const src = await req.loadString();
+   if (!/const VERSION = "/.test(src)) throw new Error("Téléchargement incomplet, réessaie.");
+   if (fm.fileExists(path)) {
+     const a = new Alert(); a.title = `« ${NAME} » existe déjà`;
+     a.message = "Le remplacer par la dernière version ? Identifiants conservés, mais pas les réglages " +
+                 "modifiés dans le script : pour les garder, utilise plutôt son menu « Vérifier les mises à jour ».";
+     a.addAction("Remplacer"); a.addCancelAction("Annuler");
+     if (await a.present() === -1) return;
+   }
+   fm.writeString(path, "// Variables used by Scriptable.\n// These must be at the very top of the file. Do not edit.\n" +
+                        "// icon-color: deep-blue; icon-glyph: calendar-alt;\n" + src);
+   Safari.open("scriptable:///run/" + encodeURIComponent(NAME));
+   ```
+
+   Il télécharge le widget, le crée sous le nom `EDT CY` (icône calendrier) et le lance. Ce petit script peut ensuite être supprimé.
+3. Au premier lancement, un assistant demande :
    - identifiant et mot de passe CY (ceux de `celcat-calendar.cyu.fr`) ;
-   - numéro étudiant = le nombre après `fid0=` dans l'URL de ton emploi du temps (tu peux coller l'URL entière, ou laisser vide pour tenter la détection automatique).
+   - numéro étudiant = le nombre après `fid0=` dans l'URL de ton emploi du temps (tu peux coller l'URL entière, ou laisser vide pour tenter la détection automatique) ;
+   - l'autorisation d'envoyer des notifications.
    Tout est stocké dans le **Trousseau iOS**.
-5. Choisir « Tester les notifications » une fois, pour autoriser Scriptable à en envoyer.
-6. Ajouter un widget Scriptable sur l'écran d'accueil (taille **grande** conseillée), puis appui long → **Modifier le widget** → sélectionner le script.
+4. Ajouter un widget Scriptable sur l'écran d'accueil (taille **grande** conseillée), puis appui long → **Modifier le widget** → sélectionner `EDT CY`.
+
+Pour partager avec d'autres élèves : envoyer le lien de cette page, tout est là.
+
+### Installation manuelle
+
+Copier le contenu de [`celcat-widget.js`](celcat-widget.js) dans un nouveau script Scriptable (nommé par ex. `EDT CY`), puis le lancer : même assistant qu'au-dessus.
 
 ## Choix de la vue (paramètre du widget)
 
@@ -95,7 +127,14 @@ Le texte peut ensuite servir dans un raccourci (le lire à voix haute, l'envoyer
 
 ## Mises à jour
 
-Le script porte un numéro de version (`const VERSION` en haut du fichier). Le menu propose **« Vérifier les mises à jour »** : il compare cette version à celle publiée sur le dépôt et indique s'il faut recopier le script. Aucune vérification n'est faite depuis un widget.
+Le script porte un numéro de version (`const VERSION` en haut du fichier). Le menu propose **« Vérifier les mises à jour »** : il compare cette version à celle publiée sur le dépôt et, si une nouvelle est disponible, l'**installe en un tap** :
+
+- les identifiants (Trousseau) et l'emploi du temps en mémoire sont conservés ;
+- les **réglages modifiés** en haut du script (`HIDE`, `RENAME`, `THEME`, `REMIND_BEFORE_MIN`…) sont reportés dans la nouvelle version ; ceux laissés par défaut prennent la nouvelle valeur par défaut ;
+- l'ancienne version est gardée à côté, en `EDT CY-1.3.4.js.bak` (invisible dans la liste des scripts) ; si d'autres lignes avaient été modifiées, le message le signale ;
+- la version téléchargée est vérifiée (numéro de version, syntaxe) avant d'écrire quoi que ce soit.
+
+Aucune vérification n'est faite depuis un widget.
 
 ## Réglages
 
@@ -125,7 +164,7 @@ Le script porte un numéro de version (`const VERSION` en haut du fichier). Le m
 Lancer le script depuis Scriptable ouvre un menu :
 
 - aperçus (grand / moyen / petit widget, vue semaine, prochain cours, écran verrouillé) ;
-- **Vérifier les mises à jour** ;
+- **Vérifier les mises à jour** (et installer la nouvelle version) ;
 - **Changer mes identifiants** (libère aussi le verrou après un refus) ;
 - **Débloquer et réessayer une fois** (proposé uniquement après un refus d'identifiants) ;
 - **Tester les notifications** (déclenche la demande d'autorisation iOS) ;

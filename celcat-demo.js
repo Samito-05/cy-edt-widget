@@ -1535,7 +1535,97 @@ async function checkUpdate() {
   const src = await r.loadString();
   const m = src.match(/const VERSION = "([^"]+)"/);
   if (!m) throw new Error("Version introuvable sur GitHub.");
-  return { remote: m[1], newer: isNewer(m[1], VERSION) };
+  return { remote: m[1], newer: isNewer(m[1], VERSION), src };
+}
+
+// Réglages reportés d'une version à l'autre (voir « réglages » en haut du fichier)
+const SETTINGS = ["DAYS_AHEAD", "FETCH_MIN", "NIGHT_START", "NIGHT_END", "HIDE_AFTER_MIN",
+  "SHOW_COUNTDOWN", "LIVE_FAMILIES", "NOTIFY_CHANGES", "CHANGES_DAYS", "REMIND_BEFORE_MIN",
+  "SYNC_CALENDAR", "CALENDAR_NAME", "THEME", "HIDE", "RENAME", "TYPE_COLORS", "MAX_REMINDERS"];
+
+// Texte complet d'une déclaration « const NAME = … ; », sur une ou plusieurs lignes
+// (tableau / objet ouvert en fin de ligne, refermé par « ]; » ou « }; » en début de ligne)
+function settingDecl(src, name) {
+  const m = new RegExp(`^const ${name} = [^\\n]*`, "m").exec(src);
+  if (!m) return null;
+  let end = m.index + m[0].length;
+  if (/=\s*[\[{]\s*(\/\/.*)?$/.test(m[0])) {
+    const close = /\n[\]}];[^\n]*/.exec(src.slice(end));
+    if (!close) return null;
+    end += close.index + close[0].length;
+  }
+  return src.slice(m.index, end);
+}
+
+// En-tête ajouté par Scriptable (icône, couleur) : tout ce qui précède le bandeau « // === »
+function splitHeader(src) {
+  const i = src.search(/^\/\/ =+$/m);
+  return i > 0 ? [src.slice(0, i), src.slice(i)] : ["", src];
+}
+
+// Nouvelle version du script : source publiée + réglages modifiés par l'utilisateur.
+// base = source publiée de la version installée (null si introuvable) : sert à savoir
+// quels réglages ont été touchés. Sans elle, tout réglage différent est reporté.
+function mergeUpdate(local, base, remote) {
+  const [header, body] = splitHeader(local);
+  let out = remote;
+  const kept = [];
+  let rest = body;                     // local sans ses réglages → autres modifications ?
+  for (const name of SETTINGS) {
+    const mine = settingDecl(body, name);
+    const theirs = settingDecl(remote, name);
+    const orig = base ? settingDecl(base, name) : theirs;
+    if (mine === null || theirs === null) continue;
+    if (mine !== orig) { out = out.replace(theirs, () => mine); kept.push(name); }
+    if (base && orig !== null) rest = rest.replace(mine, () => orig);
+  }
+  return { src: header + out, kept, otherEdits: base ? rest !== base : null };
+}
+
+// Vérifie la syntaxe sans rien exécuter (await et return au niveau racine, comme Scriptable)
+function syntaxOk(src) {
+  try { new (Object.getPrototypeOf(async function () {}).constructor)(src); return true; }
+  catch (e) { return false; }
+}
+
+// Gestionnaire du dossier des scripts : iCloud Drive si le script y est rangé
+function scriptFM(path) {
+  try {
+    const ic = FileManager.iCloud();
+    if (path.startsWith(ic.documentsDirectory())) return ic;
+  } catch (e) {}
+  return FileManager.local();
+}
+
+// Remplace ce script par la version publiée. L'ancienne est gardée à côté en .bak
+// (Scriptable n'affiche que les .js : elle n'encombre pas la liste des scripts).
+async function installUpdate(remote, remoteSrc) {
+  const path = module.filename;
+  const sfm = scriptFM(path);
+  if (sfm.downloadFileFromiCloud) await sfm.downloadFileFromiCloud(path);
+  const local = sfm.readString(path);
+  let base = null;
+  try {
+    base = await request(REPO_RAW.replace("/main/", `/${VERSION}/`)).loadString();
+    if (!new RegExp(`const VERSION = "${VERSION.replace(/\./g, "\\.")}"`).test(base)) base = null;
+  } catch (e) {}
+  const up = mergeUpdate(local, base, remoteSrc);
+  if (!up.src.includes(`const VERSION = "${remote}"`) || !syntaxOk(up.src))
+    throw new Error("Version téléchargée incomplète, rien n'a été modifié.");
+  const backup = path.replace(/\.js$/, "") + `-${VERSION}.js.bak`;
+  sfm.writeString(backup, local);
+  sfm.writeString(path, up.src);
+  return { ...up, backup: backup.split("/").pop() };
+}
+
+// Au 1er essai, iOS demande l'autorisation d'envoyer des notifications à Scriptable
+async function testNotification() {
+  const n = new Notification();
+  n.title = "Notifications activées ✅";
+  n.body = `Rappels ${REMIND_BEFORE_MIN ? REMIND_BEFORE_MIN + " min avant chaque cours" : "désactivés"}` +
+           `${NOTIFY_CHANGES ? " · alertes en cas de changement" : ""}.`;
+  n.sound = "default";
+  await n.schedule();
 }
 
 // ---------- Siri / Raccourcis ----------
@@ -1614,6 +1704,26 @@ if (!config.runsInWidget && DEMO) {
   if (c === -1) { Script.complete(); return; }
   ({ family, view } = previews[c][1]);
   offset = 0;
+} else if (!config.runsInWidget && (!Keychain.contains(KC_USER) || !Keychain.contains(KC_PASS))) {
+  // Premier lancement : identifiants → notifications → ajout du widget, puis aperçu
+  const hi = new Alert();
+  hi.title = "Bienvenue 👋";
+  hi.message = "Trois étapes pour avoir ton emploi du temps CY sur l'écran d'accueil :\n" +
+               "1. tes identifiants CY (gardés dans le Trousseau de l'iPhone)\n" +
+               "2. l'autorisation d'envoyer des notifications (rappels, changements)\n" +
+               "3. l'ajout du widget";
+  hi.addAction("Commencer");
+  hi.addCancelAction("Plus tard");
+  if ((await hi.present()) === -1 || !(await askCredentials())) { Script.complete(); return; }
+  await testNotification();
+  const tip = new Alert();
+  tip.title = "Dernière étape : le widget";
+  tip.message = "Écran d'accueil → appui long sur un espace vide → « + » (ou « Modifier ») → Scriptable → " +
+                "taille grande → Ajouter. Puis appui long sur le widget → Modifier le widget → Script : « " +
+                Script.name() + " ».\n\nParamètre (facultatif) : « semaine » ou « prochain » pour les autres vues.";
+  tip.addAction("Voir l'aperçu");
+  await tip.present();
+  family = "large"; view = "day"; offset = 0;
 } else if (!config.runsInWidget) {
   const auth = readAuthLock();
   const lock = auth && auth.blocked ? auth : null;   // tentative en cours / simple compteur : rien à signaler
@@ -1642,30 +1752,40 @@ if (!config.runsInWidget && DEMO) {
   const choice = actions[c][1];
   if (choice.unlock) { clearAuthLock(); AUTH_BAD = false; }
   if (choice.creds) await askCredentials();
-  if (choice.testNotif) {
-    // Au 1er essai, iOS demande l'autorisation d'envoyer des notifications à Scriptable
-    const n = new Notification();
-    n.title = "Notifications activées ✅";
-    n.body = `Rappels ${REMIND_BEFORE_MIN ? REMIND_BEFORE_MIN + " min avant chaque cours" : "désactivés"}` +
-             `${NOTIFY_CHANGES ? " · alertes en cas de changement" : ""}.`;
-    n.sound = "default";
-    await n.schedule();
-    Script.complete(); return;
-  }
+  if (choice.testNotif) { await testNotification(); Script.complete(); return; }
   if (choice.update) {
     const a = new Alert();
     a.title = "Mise à jour";
+    let found = null;
     try {
-      const { remote, newer } = await checkUpdate();
-      a.message = newer
-        ? `Version ${remote} disponible (tu as la ${VERSION}).
-Copie le script depuis ${REPO} pour mettre à jour.`
+      found = await checkUpdate();
+      a.message = found.newer
+        ? `Version ${found.remote} disponible (tu as la ${VERSION}).\n` +
+          "Tes identifiants et tes réglages (HIDE, RENAME, THEME…) sont conservés."
         : `Le script est à jour (version ${VERSION}).`;
     } catch (e) {
       a.message = "Vérification impossible : " + e.message;
     }
-    a.addAction("OK");
-    await a.present();
+    if (found && found.newer) { a.addAction("Installer"); a.addCancelAction("Plus tard"); }
+    else a.addAction("OK");
+    const go = await a.present();
+    if (found && found.newer && go === 0) {
+      const done = new Alert();
+      try {
+        const up = await installUpdate(found.remote, found.src);
+        done.title = `Version ${found.remote} installée ✅`;
+        done.message = (up.kept.length ? `Réglages conservés : ${up.kept.join(", ")}.\n` : "") +
+          (up.otherEdits !== false
+            ? `Si tu avais modifié autre chose dans le script, l'ancienne version est dans le fichier ${up.backup} (dossier Scriptable).\n`
+            : "") +
+          "Relance le script pour l'utiliser.";
+      } catch (e) {
+        done.title = "Mise à jour impossible";
+        done.message = e.message + `\nTu peux copier le script à la main depuis ${REPO}.`;
+      }
+      done.addAction("OK");
+      await done.present();
+    }
     Script.complete(); return;
   }
   if (choice.debug) {
