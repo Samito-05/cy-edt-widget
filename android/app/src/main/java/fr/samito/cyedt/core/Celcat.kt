@@ -2,9 +2,6 @@ package fr.samito.cyedt.core
 
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.CookieManager
-import java.net.CookiePolicy
-import java.net.HttpCookie
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
@@ -35,7 +32,7 @@ interface Creds {
     val salt: String
 }
 
-class Resp(val body: String, val url: String)
+class Resp(val body: String, val url: String, val code: Int = 200)
 
 interface Http {
     fun get(url: String): Resp
@@ -97,7 +94,8 @@ class Celcat(
                         val msg: String? = null, val strikes: Int = 0, val at: Long = 0)
 
     fun credFingerprint(): String {
-        val s = creds.salt + "\u0000" + (creds.user ?: "") + "\u0000" + (creds.pass ?: "")
+        // « v2 » : les verrous posés par l'ancien client HTTP (cookies illisibles) sont oubliés
+        val s = "v2\u0000" + creds.salt + "\u0000" + (creds.user ?: "") + "\u0000" + (creds.pass ?: "")
         return MessageDigest.getInstance("SHA-256").digest(s.toByteArray()).take(12).joinToString("") { "%02x".format(it) }
     }
 
@@ -144,7 +142,7 @@ class Celcat(
     fun detectFid(vararg texts: String?): String {
         for (t in texts) {
             val s = t ?: continue
-            val m = Regex("fid0=(\\d{5,})").find(s) ?: Regex("federationIds[^0-9]{0,30}(\\d{5,})").find(s)
+            val m = Regex("fid0=(\\d{5,})").find(s) ?: Regex("federationIds[^0-9]{0,30}(\\d{5,})", RegexOption.IGNORE_CASE).find(s)
             if (m != null) { creds.fid = m.groupValues[1]; return m.groupValues[1] }
         }
         return ""
@@ -159,7 +157,9 @@ class Celcat(
         if (lock != null && lock.blocked) throw credError(lock.msg ?: UNCONFIRMED_MSG)
         if (lock != null && lock.pending) throw CelcatException("Connexion en cours…", transient = true)
 
-        val page = http.get("$BASE/LdapLogin").body
+        val lp = http.get("$BASE/LdapLogin")
+        if (lp.code >= 500) throw CelcatException("CELCAT indisponible (${lp.code})")
+        val page = lp.body
         val token = Regex("__RequestVerificationToken[^>]*value=\"([^\"]+)\"").find(page)?.groupValues?.get(1)
             ?: return false   // pas de formulaire → pas de connexion nécessaire
 
@@ -197,9 +197,11 @@ class Celcat(
 
     private fun fetchEvents(): JSONArray? {
         val (start, end) = fetchWindow()
-        val txt = http.post("$BASE/Home/GetCalendarData",
+        val r = http.post("$BASE/Home/GetCalendarData",
             "start=$start&end=$end&resType=104&calView=agendaWeek&federationIds%5B%5D=${enc(creds.fid)}&colourScheme=3",
-            mapOf("X-Requested-With" to "XMLHttpRequest")).body.trim()
+            mapOf("X-Requested-With" to "XMLHttpRequest", "Accept" to "application/json, text/javascript, */*; q=0.01"))
+        if (r.code >= 500) throw CelcatException("CELCAT indisponible (${r.code})")
+        val txt = r.body.trim()
         if (!txt.startsWith("[")) return null   // page HTML = non connecté
         return JSONArray(txt)
     }
@@ -298,32 +300,63 @@ class Celcat(
     }
 }
 
-/** Client HTTP (java.net) : cookies de session gardés sur le disque, redirections suivies à la main. */
-class CelcatHttp(private val store: Store) : Http {
-    private val cookies = CookieManager(null, CookiePolicy.ACCEPT_ALL)
-    private val COOKIES = "celcat_cookies.json"
+/**
+ * Client HTTP (java.net) : cookies de session gardés sur le disque, redirections suivies à la main.
+ * Un seul hôte (CELCAT) : cookies rangés par nom, envoyés tels quels (« a=1; b=2 »).
+ * Pas de java.net.CookieManager : ses cookies relus du disque partaient au format RFC 2965
+ * ($Version="1"; nom="valeur") et CELCAT ne reconnaissait plus ni la session ni le jeton anti-CSRF.
+ */
+class CelcatHttp(private val store: Store, private val clock: () -> Long = System::currentTimeMillis) : Http {
+    private class Cookie(val value: String, val expires: Long)   // expires = 0 : cookie de session
+    private val cookies = LinkedHashMap<String, Cookie>()
+    private val COOKIES = "celcat_cookies_v2.json"
 
     init {
+        try { store.delete("celcat_cookies.json") } catch (e: Exception) {}   // ancien format, illisible par CELCAT
         try {
-            val a = JSONArray(store.read(COOKIES) ?: "[]")
-            for (i in 0 until a.length()) {
-                val o = a.getJSONObject(i)
-                val c = HttpCookie(o.getString("n"), o.getString("v"))
-                c.path = o.optString("p", "/")
-                c.maxAge = o.optLong("m", -1)
-                c.secure = true
-                cookies.cookieStore.add(URI(BASE), c)
+            val o = JSONObject(store.read(COOKIES) ?: "{}")
+            for (name in o.keys()) {
+                val c = o.getJSONObject(name)
+                cookies[name] = Cookie(c.getString("v"), c.optLong("e"))
             }
         } catch (e: Exception) {}
     }
 
+    private fun alive() = cookies.entries.filter { it.value.expires == 0L || it.value.expires > clock() }
+
     private fun saveCookies() {
-        val a = JSONArray()
-        cookies.cookieStore.cookies.filter { !it.hasExpired() }.forEach {
-            a.put(JSONObject().put("n", it.name).put("v", it.value).put("p", it.path ?: "/").put("m", it.maxAge))
-        }
-        try { store.write(COOKIES, a.toString()) } catch (e: Exception) {}
+        val o = JSONObject()
+        alive().forEach { (n, c) -> o.put(n, JSONObject().put("v", c.value).put("e", c.expires)) }
+        try { store.write(COOKIES, o.toString()) } catch (e: Exception) {}
     }
+
+    /** En-tête Set-Cookie → cookie rangé (ou supprimé s'il est expiré / vide). */
+    fun setCookie(header: String) {
+        val parts = header.split(';')
+        val nv = parts[0]
+        val i = nv.indexOf('=')
+        if (i <= 0) return
+        val name = nv.substring(0, i).trim()
+        val value = nv.substring(i + 1).trim().removeSurrounding("\"")
+        var expires = 0L
+        for (p in parts.drop(1)) {
+            val k = p.substringBefore('=').trim().lowercase()
+            val v = p.substringAfter('=', "").trim()
+            if (k == "max-age") v.toLongOrNull()?.let { expires = if (it <= 0) -1 else clock() + it * 1000 }
+            else if (k == "expires" && expires == 0L) try {
+                expires = java.time.ZonedDateTime.parse(v, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli().coerceAtLeast(1)
+            } catch (e: Exception) {
+                try {   // variante « Thu, 01-Jan-1970 00:00:00 GMT »
+                    expires = java.time.ZonedDateTime.parse(v.replace('-', ' '),
+                        java.time.format.DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss zzz", java.util.Locale.US)).toInstant().toEpochMilli().coerceAtLeast(1)
+                } catch (e2: Exception) {}
+            }
+        }
+        if (value.isEmpty() || (expires != 0L && expires <= clock())) cookies.remove(name)
+        else cookies[name] = Cookie(value, expires)
+    }
+
+    fun cookieHeader(): String = alive().joinToString("; ") { "${it.key}=${it.value.value}" }
 
     override fun get(url: String) = send(url, null, emptyMap())
     override fun post(url: String, form: String, headers: Map<String, String>) = send(url, form, headers)
@@ -335,11 +368,16 @@ class CelcatHttp(private val store: Store) : Http {
             val uri = URI(url)
             val c = URL(url).openConnection() as HttpURLConnection
             c.instanceFollowRedirects = false
+            c.useCaches = false
             c.connectTimeout = 15000
             c.readTimeout = 20000
             c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) cy-edt-android")
             c.setRequestProperty("Accept-Language", "fr-FR,fr;q=0.9")
-            cookies.get(uri, emptyMap()).forEach { (k, v) -> if (v.isNotEmpty()) c.setRequestProperty(k, v.joinToString("; ")) }
+            if (uri.host == URI(BASE).host) cookieHeader().takeIf { it.isNotEmpty() }?.let { c.setRequestProperty("Cookie", it) }
+            if (body != null) {
+                c.setRequestProperty("Origin", BASE)
+                c.setRequestProperty("Referer", if (url.contains("/LdapLogin")) "$BASE/LdapLogin" else "$BASE/cal")
+            }
             headers.forEach { (k, v) -> c.setRequestProperty(k, v) }
             if (body != null) {
                 c.requestMethod = "POST"
@@ -349,7 +387,8 @@ class CelcatHttp(private val store: Store) : Http {
             }
             try {
                 val code = c.responseCode
-                cookies.put(uri, c.headerFields.filterKeys { it != null })
+                if (uri.host == URI(BASE).host)
+                    c.headerFields.filterKeys { it != null && it.equals("Set-Cookie", ignoreCase = true) }.values.flatten().forEach(::setCookie)
                 saveCookies()
                 val loc = c.getHeaderField("Location")
                 if (code in 300..399 && loc != null) {
@@ -359,8 +398,7 @@ class CelcatHttp(private val store: Store) : Http {
                 }
                 val stream = if (code >= 400) c.errorStream else c.inputStream
                 val text = stream?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
-                if (code >= 500) throw CelcatException("CELCAT indisponible ($code)")
-                return Resp(text, url)
+                return Resp(text, url, code)
             } finally { c.disconnect() }
         }
         throw CelcatException("Trop de redirections")

@@ -11,4 +11,18 @@
     <color name="now_bg">#FF182A1F</color>
     <color name="cancel">#FFFF9F0A</color>
     <color name="bad">#FFFF453A</color>
+
+    <color name="app_bg">#FF0F1115</color>
+    <color name="app_card">#FF1A1D23</color>
+    <color name="app_text">#FFF2F3F7</color>
+    <color name="app_sub">#FF9BA0AE</color>
+    <color name="app_line">#FF2A2E36</color>
+    <color name="app_field">#FF23272F</color>
+    <color name="accent">#FF6A9CFF</color>
+    <color name="accent_tonal">#FF1F2B45</color>
+    <color name="on_accent">#FF0B1530</color>
+    <color name="hero_start">#FF15306B</color>
+    <color name="hero_end">#FF2A5BC4</color>
+    <color name="warn_bg">#FF33240F</color>
+    <color name="warn_text">#FFFFB35C</color>
 </resources>

@@ -6,6 +6,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
+import android.graphics.Paint
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -13,10 +15,11 @@ import android.os.PowerManager
 import android.provider.Settings as SysSettings
 import android.text.format.DateUtils
 import android.view.View
+import android.view.animation.LinearInterpolator
 import android.widget.ArrayAdapter
-import android.widget.Button
-import android.widget.CheckBox
+import android.widget.CompoundButton
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
@@ -25,6 +28,8 @@ import fr.samito.cyedt.core.Course
 import fr.samito.cyedt.core.FetchResult
 import fr.samito.cyedt.core.Parser
 import fr.samito.cyedt.core.Schedule
+import java.time.Duration
+import java.time.LocalDateTime
 import java.util.concurrent.Executors
 
 /**
@@ -50,40 +55,39 @@ class MainActivity : Activity() {
         Notifs.channels(this)
         Edt.schedule(this)
 
-        v<TextView>(R.id.version).text = "EDT CY ${BuildConfig.VERSION_NAME} · projet non officiel, sans lien avec CY Tech / CYU"
+        v<TextView>(R.id.version).text = "EDT CY ${BuildConfig.VERSION_NAME}\nProjet non officiel, sans lien avec CY Tech / CYU"
         v<EditText>(R.id.user).setText(creds.user ?: "")
         v<EditText>(R.id.fid).setText(creds.fid)
         if (creds.hasPassword) v<EditText>(R.id.pass).hint = "Mot de passe (vide = inchangé)"
 
-        v<Spinner>(R.id.theme).adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, themes.map { it.second })
+        v<Spinner>(R.id.theme).adapter = adapter(themes.map { it.second })
         v<Spinner>(R.id.theme).setSelection(themes.indexOfFirst { it.first == settings.theme }.coerceAtLeast(0))
-        v<Spinner>(R.id.remind).adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
-            reminds.map { if (it == 0) "Pas de rappel" else "$it min avant" })
+        v<Spinner>(R.id.remind).adapter = adapter(reminds.map { if (it == 0) "Pas de rappel" else "$it min avant" })
         v<Spinner>(R.id.remind).setSelection(reminds.indexOf(settings.remindMin).coerceAtLeast(0))
-        v<CheckBox>(R.id.notify).isChecked = settings.notifyChanges
-        v<CheckBox>(R.id.countdown).isChecked = settings.countdown
+        v<CompoundButton>(R.id.notify).isChecked = settings.notifyChanges
+        v<CompoundButton>(R.id.countdown).isChecked = settings.countdown
         v<EditText>(R.id.hide).setText(settings.hideText)
         v<EditText>(R.id.rename).setText(settings.renameText)
 
-        v<Button>(R.id.save).setOnClickListener { saveCreds() }
-        v<Button>(R.id.refresh).setOnClickListener { load(force = true) }
-        v<Button>(R.id.unlock).setOnClickListener {
+        v<View>(R.id.save).setOnClickListener { saveCreds() }
+        v<View>(R.id.refresh).setOnClickListener { load(force = true) }
+        v<View>(R.id.unlock).setOnClickListener {
             Edt.celcat(this).clearAuthLock()
             load(force = true)
         }
-        v<Button>(R.id.open_celcat).setOnClickListener {
+        v<View>(R.id.open_celcat).setOnClickListener {
             val fid = creds.fid
             open(if (fid.isEmpty()) BASE else "$BASE/cal?vt=agendaWeek&et=student&fid0=$fid")
         }
-        v<Button>(R.id.copy_next).setOnClickListener {
+        v<View>(R.id.copy_next).setOnClickListener {
             val txt = Schedule.nextText(courses, Edt.now())
             getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Prochain cours", txt))
             Toast.makeText(this, txt, Toast.LENGTH_LONG).show()
         }
-        v<Button>(R.id.save_settings).setOnClickListener { saveSettings() }
-        v<Button>(R.id.test_notif).setOnClickListener { askNotifications(); Notifs.test(this) }
-        v<Button>(R.id.battery).setOnClickListener { askBattery() }
-        v<Button>(R.id.repo).setOnClickListener { open("https://github.com/Samito-05/cy-edt-widget/releases") }
+        v<View>(R.id.save_settings).setOnClickListener { saveSettings() }
+        v<View>(R.id.test_notif).setOnClickListener { askNotifications(); Notifs.test(this) }
+        v<View>(R.id.battery).setOnClickListener { askBattery() }
+        v<View>(R.id.repo).setOnClickListener { open("https://github.com/Samito-05/cy-edt-widget/releases") }
     }
 
     override fun onResume() {
@@ -91,24 +95,40 @@ class MainActivity : Activity() {
         // Ouvrir l'app force le téléchargement, sauf s'il date de moins de 2 min
         val at = Edt.celcat(this).cached().at ?: 0
         load(force = System.currentTimeMillis() - at > 2 * 60000)
-        v<Button>(R.id.battery).visibility =
+        v<View>(R.id.battery).visibility =
             if (getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(packageName) == true) View.GONE else View.VISIBLE
     }
 
     override fun onDestroy() { bg.shutdown(); super.onDestroy() }
 
+    private fun adapter(items: List<String>) =
+        ArrayAdapter(this, android.R.layout.simple_spinner_item, items).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+
+    /** Icône « Actualiser » qui tourne pendant le téléchargement */
+    private fun spin(on: Boolean) {
+        val b = v<View>(R.id.refresh)
+        b.animate().cancel()
+        if (on) b.animate().rotationBy(360f * 40).setDuration(40_000).setInterpolator(LinearInterpolator()).start()
+        else b.rotation = 0f
+        b.isEnabled = !on
+    }
+
     private fun open(url: String) = try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (e: Exception) {}
 
     private fun load(force: Boolean) {
         show(Edt.celcat(this).cached())
-        if (creds.user.isNullOrEmpty() || !creds.hasPassword) {
-            v<TextView>(R.id.status).text = "Renseigne tes identifiants CY ci-dessous pour commencer."
-            return
-        }
+        if (creds.user.isNullOrEmpty() || !creds.hasPassword) return
         v<TextView>(R.id.status).text = "Mise à jour…"
+        spin(true)
         bg.execute {
             val r = try { Edt.refresh(this, force) } catch (e: Exception) { null }
-            runOnUiThread { if (!isFinishing) show(r ?: Edt.celcat(this).cached()) }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                spin(false)
+                show(r ?: Edt.celcat(this).cached())
+            }
         }
     }
 
@@ -116,22 +136,92 @@ class MainActivity : Activity() {
         courses = Edt.courses(this, r)
         val now = Edt.now()
         val at = r.at?.takeIf { it > 0 }?.let { DateUtils.getRelativeTimeSpanString(it, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS) }
-        v<TextView>(R.id.status).text = listOfNotNull(
-            r.error?.let { "⚠️ $it" },
-            at?.let { "Emploi du temps mis à jour $it" },
-        ).joinToString("\n").ifEmpty { if (creds.hasPassword) "Pas encore de données." else "" }
-        v<Button>(R.id.unlock).visibility = if (r.authBad) View.VISIBLE else View.GONE
-        v<TextView>(R.id.next).text = if (courses.isEmpty()) "" else Schedule.nextText(courses, now)
-
-        val day = Schedule.dayView(courses, now, 12)
-        v<TextView>(R.id.day_title).text = if (courses.isEmpty()) "" else day.label
-        v<TextView>(R.id.day_list).text = (day.allDay.map { "📌 ${it.title}" } + day.shown.map { e ->
-            val info = if (e.cancelled) "ANNULÉ" else listOf(e.room, e.staff).filter { it.isNotEmpty() }.joinToString(" · ")
-            "${Schedule.hm(e.start)}–${Schedule.hm(e.end)}  ${e.title}" + if (info.isNotEmpty()) "\n              $info" else ""
-        }).joinToString("\n").ifEmpty { if (courses.isEmpty()) "" else "Pas de cours 🎉" }
-
+        v<TextView>(R.id.status).text = when {
+            at != null -> "Mis à jour $at"
+            creds.user.isNullOrEmpty() || !creds.hasPassword -> "Renseigne tes identifiants CY pour commencer."
+            else -> "Pas encore de données"
+        }
+        v<TextView>(R.id.error).apply {
+            text = r.error ?: ""
+            visibility = if (r.error.isNullOrEmpty()) View.GONE else View.VISIBLE
+        }
+        v<View>(R.id.unlock).visibility = if (r.authBad) View.VISIBLE else View.GONE
+        showNext(now)
+        showDay(now)
         val modules = Parser.knownModules(courses)
         v<TextView>(R.id.modules).text = if (modules.isEmpty()) "" else "Matières : " + modules.joinToString(", ")
+    }
+
+    /** Carte « Prochain cours » */
+    private fun showNext(now: LocalDateTime) {
+        val c = Schedule.nextClass(courses, now)
+        v<View>(R.id.hero).visibility = if (c == null) View.GONE else View.VISIBLE
+        if (c == null) return
+        val started = !c.start.isAfter(now)
+        val mins = Duration.between(now, c.start).toMinutes()
+        v<TextView>(R.id.hero_label).text = when {
+            started -> "En cours · jusqu'à ${Schedule.hm(c.end)}"
+            mins < 60 -> "Dans ${mins + 1} min"
+            else -> "${Schedule.dayLabel(c.start.toLocalDate(), now.toLocalDate())} · ${Schedule.hm(c.start)}"
+        }
+        v<View>(R.id.hero_dot).backgroundTintList = ColorStateList.valueOf(if (started) getColor(R.color.now) else c.color)
+        v<TextView>(R.id.hero_title).text = c.module.ifEmpty { c.title }
+        v<TextView>(R.id.hero_meta).text = listOf(c.category, "${Schedule.hm(c.start)} – ${Schedule.hm(c.end)}", c.staff)
+            .filter { it.isNotEmpty() }.joinToString(" · ")
+        v<TextView>(R.id.hero_room).text = "Salle " + c.room.ifEmpty { "inconnue" }
+    }
+
+    /** Carte de la journée : un cours par ligne, barre à la couleur de la matière */
+    private fun showDay(now: LocalDateTime) {
+        val card = v<View>(R.id.day_card)
+        if (courses.isEmpty()) { card.visibility = View.GONE; return }
+        card.visibility = View.VISIBLE
+        val day = Schedule.dayView(courses, now, 12)
+        v<TextView>(R.id.day_title).text = day.label
+        v<TextView>(R.id.day_count).text = when (day.count) { 0 -> ""; 1 -> "1 cours"; else -> "${day.count} cours" }
+        val list = v<LinearLayout>(R.id.day_list)
+        list.removeAllViews()
+
+        fun row(start: String, end: String, title: String, meta: String, color: Int,
+                badge: String? = null, past: Boolean = false, cancelled: Boolean = false) {
+            val r = layoutInflater.inflate(R.layout.app_row, list, false)
+            r.findViewById<TextView>(R.id.r_start).text = start
+            r.findViewById<TextView>(R.id.r_end).text = end
+            r.findViewById<View>(R.id.r_bar).backgroundTintList = ColorStateList.valueOf(color)
+            r.findViewById<TextView>(R.id.r_title).apply {
+                text = title
+                if (cancelled) paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
+            }
+            r.findViewById<TextView>(R.id.r_meta).apply {
+                text = meta
+                visibility = if (meta.isEmpty()) View.GONE else View.VISIBLE
+            }
+            if (badge != null) r.findViewById<TextView>(R.id.r_badge).apply {
+                val fg = getColor(if (cancelled) R.color.cancel else R.color.now)
+                text = badge
+                visibility = View.VISIBLE
+                setTextColor(fg)
+                backgroundTintList = ColorStateList.valueOf((fg and 0x00FFFFFF) or 0x26000000)
+            }
+            if (past) r.alpha = 0.45f
+            list.addView(r)
+        }
+
+        day.allDay.forEach { row("📌", "", it.title, "", it.color) }
+        day.shown.forEach { e ->
+            val live = !e.cancelled && !e.start.isAfter(now) && e.end.isAfter(now)
+            row(Schedule.hm(e.start), Schedule.hm(e.end), e.module.ifEmpty { e.title },
+                listOf(e.category, e.room, e.staff).filter { it.isNotEmpty() }.joinToString(" · "),
+                if (e.cancelled) getColor(R.color.cancel) else e.color,
+                badge = if (e.cancelled) "Annulé" else if (live) "En cours" else null,
+                past = !e.end.isAfter(now), cancelled = e.cancelled)
+        }
+        if (list.childCount == 0) list.addView(TextView(this).apply {
+            text = "Pas de cours 🎉"
+            textSize = 14f
+            setTextColor(getColor(R.color.app_sub))
+            setPadding(0, (12 * resources.displayMetrics.density).toInt(), 0, 0)
+        })
     }
 
     private fun saveCreds() {
@@ -154,8 +244,8 @@ class MainActivity : Activity() {
     private fun saveSettings() {
         settings.theme = themes[v<Spinner>(R.id.theme).selectedItemPosition].first
         settings.remindMin = reminds[v<Spinner>(R.id.remind).selectedItemPosition]
-        settings.notifyChanges = v<CheckBox>(R.id.notify).isChecked
-        settings.countdown = v<CheckBox>(R.id.countdown).isChecked
+        settings.notifyChanges = v<CompoundButton>(R.id.notify).isChecked
+        settings.countdown = v<CompoundButton>(R.id.countdown).isChecked
         settings.hideText = v<EditText>(R.id.hide).text.toString()
         settings.renameText = v<EditText>(R.id.rename).text.toString()
         val r = Edt.celcat(this).cached()
