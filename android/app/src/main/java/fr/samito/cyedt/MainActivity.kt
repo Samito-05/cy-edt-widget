@@ -47,7 +47,7 @@ class MainActivity : Activity() {
     private var courses: List<Course> = emptyList()
 
     private val themes = listOf("auto" to "Automatique", "light" to "Clair", "dark" to "Sombre")
-    private val reminds = listOf(0, 5, 10, 15, 30)
+    private val reminds = listOf(0, 5, 10, 15, 20, 25, 30)
 
     private fun <T : View> v(id: Int): T = findViewById(id)
 

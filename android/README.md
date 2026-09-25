@@ -33,7 +33,7 @@ Mise à jour : télécharger le nouvel APK et l'installer par-dessus (identifian
 
 ## Fonctionnalités
 
-Comme la version iOS : couleurs par type (CM rouge, TD bleu, TP violet, examen orange, vert réservé au cours en cours), cours annulés grisés, fériés/vacances en bandeau, mode clair/sombre (ou forcé), cours masqués et matières renommées, notification quand l'emploi du temps change (7 prochains jours), rappel X min avant chaque cours avec la salle, cache hors ligne, aucun appel réseau la nuit (22h → 7h), pauses progressives en cas de panne.
+Comme la version iOS : couleurs par type (CM rouge, TD bleu, TP violet, examen orange, vert réservé au cours en cours), cours annulés grisés, fériés/vacances en bandeau, mode clair/sombre (ou forcé), cours masqués et matières renommées, notification quand l'emploi du temps change (7 prochains jours), rappel 5 à 30 min avant chaque cours (par pas de 5 min) avec la salle, cache hors ligne, aucun appel réseau la nuit (22h → 7h), pauses progressives en cas de panne.
 
 **Protection du compte CY** : identique à iOS. Dès que CELCAT refuse le mot de passe, plus rien n'est envoyé tant que l'identifiant ou le mot de passe n'a pas été modifié (ou via « Débloquer et réessayer une fois »). Après 2 connexions non confirmées, verrou aussi.
 
