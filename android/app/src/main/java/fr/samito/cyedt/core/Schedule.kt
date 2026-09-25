@@ -74,14 +74,22 @@ object Schedule {
     fun nextClass(courses: List<Course>, now: LocalDateTime) = courses.sortedBy { it.start }
         .firstOrNull { !it.cancelled && !it.allDay && it.end.isAfter(now) && hideAt(it).isAfter(now) }
 
-    /** Moments où l'affichage change (début, +30 min, fin de chaque cours) */
-    fun edges(courses: List<Course>) = courses.filter { !it.allDay }.flatMap { listOf(it.start, hideAt(it), it.end) }
+    const val COUNTDOWN_MIN = 60L       // compte à rebours affiché dans l'heure avant un cours
+
+    /** Moments où l'affichage change (début, +30 min, fin de chaque cours ; -1 h si compte à rebours) */
+    fun edges(courses: List<Course>, countdown: Boolean = false) = courses.filter { !it.allDay }.flatMap {
+        listOfNotNull(if (countdown) it.start.minusMinutes(COUNTDOWN_MIN) else null, it.start, hideAt(it), it.end)
+    }
 
     /** Prochain rafraîchissement : prochain début/fin de cours, sinon minuit (changement de jour). */
-    fun nextRedraw(courses: List<Course>, now: LocalDateTime): LocalDateTime {
+    fun nextRedraw(courses: List<Course>, now: LocalDateTime, countdown: Boolean = false): LocalDateTime {
         val midnight = now.toLocalDate().plusDays(1).atStartOfDay()
-        return edges(courses).filter { it.isAfter(now) }.minOrNull()?.takeIf { it < midnight } ?: midnight
+        return edges(courses, countdown).filter { it.isAfter(now) }.minOrNull()?.takeIf { it < midnight } ?: midnight
     }
+
+    /** Compte à rebours à afficher pour ce cours ? (dans l'heure qui précède son début) */
+    fun countdownFor(c: Course, now: LocalDateTime) = !c.cancelled && c.start.isAfter(now) &&
+        !c.start.isAfter(now.plusMinutes(COUNTDOWN_MIN))
 
     /** Compare l'ancien planning au nouveau → changements lisibles (7 prochains jours) */
     fun diff(prev: List<Course>, next: List<Course>, now: LocalDateTime, prevUntil: LocalDateTime?, nextUntil: LocalDateTime?): List<String> {

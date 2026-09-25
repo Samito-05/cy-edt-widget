@@ -10,4 +10,6 @@
     android:widgetCategory="home_screen"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_day"
-    android:description="@string/widget_day_desc" />
+    android:description="@string/widget_day_desc"
+    android:configure="fr.samito.cyedt.ConfigActivity"
+    android:widgetFeatures="reconfigurable" />

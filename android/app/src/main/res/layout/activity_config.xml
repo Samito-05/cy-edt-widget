@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Que doit afficher ce widget ?"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="4dp"
+        android:paddingBottom="8dp"
+        android:text="Modifiable ensuite : appui long sur le widget → Paramètres. La vue semaine est faite pour un grand widget (4×4)."
+        android:textSize="12sp" />
+
+    <ListView
+        android:id="@+id/options"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+</LinearLayout>
