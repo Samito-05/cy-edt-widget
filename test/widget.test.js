@@ -447,6 +447,9 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
   const hNow = new Date().getHours();
   NET = { "/Home/GetCalendarData": JSON.stringify([
     ev("11", 0, Math.min(Math.max(8, hNow - 4), 16), "TD", "Statistiques", "FT202"),
+    // cours plus tard aujourd'hui : le dimanche, sans lui, plus rien à venir cette semaine
+    // → la vue passe à la semaine suivante et il n'y a plus de trait
+    ev("12", 0, Math.min(hNow + 4, 20), "CM", "Anglais", "FT101"),
     ...BASE_EVENTS,
   ]) };
   fsn.rmSync(CACHE, { force: true });
@@ -644,7 +647,10 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
   // --- 19. vue semaine : cours qui se chevauchent côte à côte
   console.log("\n[19] cours simultanés");
   {
-    const at1 = (h, m) => iso(at(1, h, m));
+    // prochain jour de semaine (pas « demain ») : un cours le samedi ou le dimanche ajoute
+    // une 6e ou 7e colonne à la grille, et les largeurs testées ci-dessous changent.
+    const wd = [1, 2, 3].find(n => at(n, 12).getDay() % 6 !== 0);
+    const at1 = (h, m) => iso(at(wd, h, m));
     const sim = (id, h1, m1, h2, m2, mod) => ({ ...ev(id, 1, 8, "TD", mod, "FT" + id), start: at1(h1, m1), end: at1(h2, m2) });
     const run = async evts => {
       NET = { "/Home/GetCalendarData": JSON.stringify(evts) };
@@ -704,9 +710,12 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
   console.log("\n[20] pas de vert hors cours en cours");
   {
     const greens = ["#34C759", "#0f0", "4CD964", "#2E7D32", "#8BC34A"];
-    const evts = greens.map((g, i) => ({ ...ev("g" + i, 1, 8 + 2 * i, "Réunion", "Matière " + i, "FT20" + i), backgroundColor: g }));
-    evts.push({ ...ev("tp", 2, 8, "TP", "Réseaux", "FT305") });
-    evts.push({ ...ev("bl", 2, 11, "Réunion", "Conseil", "FT306"), backgroundColor: "#4B4BFF" });
+    // deux jours de suite dans la même semaine (lundi → jeudi, puis le lendemain) :
+    // samedi + dimanche → lundi tomberait dans la semaine suivante, hors de la vue
+    const d1 = [1, 2, 3, 4].find(n => { const g = at(n, 12).getDay(); return g >= 1 && g <= 4; });
+    const evts = greens.map((g, i) => ({ ...ev("g" + i, d1, 8 + 2 * i, "Réunion", "Matière " + i, "FT20" + i), backgroundColor: g }));
+    evts.push({ ...ev("tp", d1 + 1, 8, "TP", "Réseaux", "FT305") });
+    evts.push({ ...ev("bl", d1 + 1, 11, "Réunion", "Conseil", "FT306"), backgroundColor: "#4B4BFF" });
     NET = { "/Home/GetCalendarData": JSON.stringify(evts) };
     fsn.rmSync(CACHE, { force: true });
     global.config.widgetFamily = "large"; global.args.widgetParameter = "semaine";
@@ -738,7 +747,7 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
     const setVer = (s, v) => s.replace(/const VERSION = "[^"]+"/, `const VERSION = "${v}"`);
     const header = "// Variables used by Scriptable.\n// icon-color: deep-blue; icon-glyph: calendar-alt;\n";
     const base = setVer(widgetSrc, "1.0.0");
-    const mine = header + base.replace('const THEME = "auto";', 'const THEME = "dark";')
+    const mine = header + base.replace('const THEME = pref("THEME", "auto");', 'const THEME = "dark";')
                               .replace(/const HIDE = \[[\s\S]*?\n\];/, 'const HIDE = [\n  "Allemand",\n];');
     const remote = setVer(widgetSrc, "9.9.9").replace("const FETCH_MIN = 15;", "const FETCH_MIN = 20;");
     const scriptPath = pathn.join(dir, "EDT CY.js");
@@ -747,11 +756,11 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
     NET = { "/main/celcat-widget.js": remote, "/1.0.0/celcat-widget.js": base };
     global.config.runsInWidget = false;
     global.alerts = [];
-    global.alertAnswers = [9, 0, 0];             // menu → « Vérifier les mises à jour » → Installer → OK
-    await load("celcat-widget.js", s => setVer(s, "1.0.0").replace('const THEME = "auto";', 'const THEME = "dark";'));
+    global.alertAnswers = [10, 0, 0];             // menu → « Vérifier les mises à jour » → Installer → OK
+    await load("celcat-widget.js", s => setVer(s, "1.0.0").replace('const THEME = pref("THEME", "auto");', 'const THEME = "dark";'));
     const out = fsn.readFileSync(scriptPath, "utf8");
     const done = global.alerts[global.alerts.length - 1] || {};
-    ok("menu : entrée 10 = mises à jour", /mises à jour/.test((global.alerts[0].actions || [])[9]), JSON.stringify(global.alerts[0].actions));
+    ok("menu : entrée 11 = mises à jour", /mises à jour/.test((global.alerts[0].actions || [])[10]), JSON.stringify(global.alerts[0].actions));
     ok("mise à jour installée", /const VERSION = "9\.9\.9"/.test(out), (done.title || "") + " " + (done.message || ""));
     ok("réglages modifiés reportés", /const THEME = "dark";/.test(out) && /"Allemand",/.test(out), out.slice(0, 200));
     ok("réglage non modifié : nouvelle valeur par défaut", /const FETCH_MIN = 20;/.test(out));
@@ -762,7 +771,7 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
     // version publiée cassée → fichier intact
     fsn.writeFileSync(scriptPath, mine);
     NET = { "/main/celcat-widget.js": setVer("const VERSION = \"9.9.9\";\nif (", "9.9.9"), "/1.0.0/celcat-widget.js": base };
-    global.alerts = []; global.alertAnswers = [9, 0, 0];
+    global.alerts = []; global.alertAnswers = [10, 0, 0];
     await load("celcat-widget.js", s => setVer(s, "1.0.0"));
     ok("source invalide refusée, script intact", fsn.readFileSync(scriptPath, "utf8") === mine,
        (global.alerts[global.alerts.length - 1] || {}).title);
@@ -787,6 +796,50 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
     global.alertAnswers = []; global.fieldValues = [];
     for (const k of Object.keys(keychain)) delete keychain[k];
     Object.assign(keychain, saved);
+    global.config.runsInWidget = true;
+  }
+
+  // --- 23. réglages depuis le menu
+  console.log("\n[23] réglages");
+  {
+    const PREFS_PATH = pathn.join(dir, "celcat_settings.json");
+    global.config.runsInWidget = true; global.config.widgetFamily = "large"; global.args.widgetParameter = "";
+    NET = { "/Home/GetCalendarData": JSON.stringify(BASE_EVENTS) };
+    fsn.writeFileSync(PREFS_PATH, JSON.stringify({ REMIND_BEFORE_MIN: 0, HIDE: ["anglais"], RENAME: { "Statistiques": "Stats" } }));
+    fsn.rmSync(CACHE, { force: true }); global.notifications = [];
+    await load();
+    const t = global.texts();
+    ok("réglage : matière renommée", t.some(s => /\bStats\b/.test(s)) && !t.some(s => /Statistiques/.test(s)), JSON.stringify(t).slice(0, 200));
+    ok("réglage : matière masquée", !t.some(s => /Anglais/.test(s)), JSON.stringify(t).slice(0, 200));
+    ok("réglage : rappels désactivés", !global.notifications.some(n => /dans \d+ min/.test(n.title || "")),
+       JSON.stringify(global.notifications.map(n => n.title)));
+
+    fsn.writeFileSync(PREFS_PATH, JSON.stringify({ REMIND_BEFORE_MIN: "zéro", HIDE: "pas une liste" }));
+    fsn.rmSync(CACHE, { force: true }); global.notifications = [];
+    let err = null;
+    try { await load(); } catch (e) { err = e; }
+    ok("réglages de mauvais type ignorés", !err && global.notifications.some(n => /dans 10 min/.test(n.title || "")),
+       (err && err.message) || JSON.stringify(global.notifications.map(n => n.title)));
+    fsn.writeFileSync(PREFS_PATH, "{ abîmé");
+    err = null;
+    try { await load(); } catch (e) { err = e; }
+    ok("fichier de réglages illisible ignoré", !err && global.texts().some(s => /Statistiques/.test(s)), err && err.message);
+
+    // menu : Réglages → Rappel → 15 min → Cours masqués → Choisir… → 1re matière → Retour → Terminé → OK
+    fsn.rmSync(PREFS_PATH, { force: true });
+    global.config.runsInWidget = false;
+    global.alerts = []; global.alertAnswers = [6, 1, 3, 5, 0, 0, -1, -1, 0];
+    await load();
+    const saved = JSON.parse(fsn.readFileSync(PREFS_PATH, "utf8"));
+    ok("menu : entrée « Réglages »", (global.alerts[0].actions || [])[6] === "Réglages", JSON.stringify(global.alerts[0].actions));
+    const mods = (global.alerts.find(a => a.title === "Masquer quelle matière ?") || {}).actions || [];
+    ok("menu : matières proposées depuis l'emploi du temps", mods.includes("Statistiques") && mods.includes("Anglais"), JSON.stringify(mods));
+    ok("menu : rappel enregistré", saved.REMIND_BEFORE_MIN === 15, JSON.stringify(saved));
+    ok("menu : matière masquée enregistrée", JSON.stringify(saved.HIDE) === JSON.stringify([mods[0]]), JSON.stringify(saved));
+    ok("menu : prochain passage du widget retélécharge", readCacheFile().at === 0);
+    ok("menu : confirmation affichée", global.alerts.some(a => /enregistrés/.test(a.title || "")));
+    global.alertAnswers = [];
+    fsn.rmSync(PREFS_PATH, { force: true });
     global.config.runsInWidget = true;
   }
 

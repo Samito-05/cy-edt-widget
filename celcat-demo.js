@@ -16,21 +16,37 @@ const REPO = "https://github.com/Samito-05/cy-edt-widget";
 const REPO_RAW = "https://raw.githubusercontent.com/Samito-05/cy-edt-widget/main/celcat-widget.js";
 
 const BASE = "https://celcat-calendar.cyu.fr";
+
+// Réglages choisis dans le menu du script (« Réglages ») : ils priment sur les valeurs
+// par défaut écrites ci-dessous dans pref(…). Rien à modifier à la main.
+const PREFS_FILE = (f => f.joinPath(f.documentsDirectory(), "celcat_settings.json"))(FileManager.local());
+const PREFS = (() => {
+  try {
+    const p = JSON.parse(FileManager.local().readString(PREFS_FILE));
+    return p && typeof p === "object" && !Array.isArray(p) ? p : {};
+  } catch (e) { return {}; }
+})();
+// Valeur du menu si elle existe et a le bon type, sinon la valeur par défaut
+function pref(key, def) {
+  return key in PREFS && typeof PREFS[key] === typeof def ? PREFS[key] : def;
+}
+
 const DAYS_AHEAD = 14;           // jours récupérés (couvre week-ends / vacances courtes)
 const FETCH_MIN = 15;            // en journée : l'emploi du temps est retéléchargé toutes les 15 min
 const NIGHT_START = 22;          // la nuit (22h → 7h) : aucun appel réseau,
 const NIGHT_END = 7;             //   le widget se sert uniquement des données en mémoire
 const HIDE_AFTER_MIN = 30;       // mode live : un cours disparaît 30 min après son début
-const SHOW_COUNTDOWN = false;    // compte à rebours « dans 12:34 » dans l'heure avant un cours (true = activé)
+const SHOW_COUNTDOWN = pref("SHOW_COUNTDOWN", false);  // compte à rebours « dans 12:34 » dans l'heure avant un cours (true = activé)
 const LIVE_FAMILIES = ["small"]; // tailles en mode live (ajoute "medium" si tu veux)
 
 // ---------- réglages : notifications, calendrier, thème ----------
-const NOTIFY_CHANGES = true;     // notification si un cours change (salle, horaire, annulation, ajout)
+// Ceux en pref(…) se changent plus simplement depuis le menu du script → « Réglages ».
+const NOTIFY_CHANGES = pref("NOTIFY_CHANGES", true);    // notification si un cours change (salle, horaire, annulation, ajout)
 const CHANGES_DAYS = 7;          //   … uniquement pour les cours des 7 prochains jours
-const REMIND_BEFORE_MIN = 10;    // rappel X min avant chaque cours, avec la salle (0 = désactivé)
-const SYNC_CALENDAR = true;      // copie les cours dans un calendrier iPhone dédié
+const REMIND_BEFORE_MIN = pref("REMIND_BEFORE_MIN", 10); // rappel X min avant chaque cours, avec la salle (0 = désactivé)
+const SYNC_CALENDAR = pref("SYNC_CALENDAR", true);      // copie les cours dans un calendrier iPhone dédié
 const CALENDAR_NAME = "Cours CY";
-const THEME = "auto";            // "auto" (suit l'iPhone), "dark" ou "light"
+const THEME = pref("THEME", "auto");                   // "auto" (suit l'iPhone), "dark" ou "light"
 
 // Cours à masquer partout (widget, rappels, notifications, calendrier) : option non
 // suivie, cours d'un autre groupe… Texte (contenu dans la matière ou le type, sans
@@ -566,15 +582,18 @@ const isCode = s => !/\s/.test(s) && /\d/.test(s) && /[A-Z]/i.test(s) &&
 
 // Retire les codes d'un intitulé :
 // "Anglais DIOANG3D", "Statistiques [I2GSIM07]", "I2GSIM07 - Statistiques"… → le nom seul
+// Renommage : ceux du menu « Réglages » d'abord, puis RENAME
+const renamed = s => (PREFS.RENAME && typeof PREFS.RENAME[s] === "string" && PREFS.RENAME[s]) || RENAME[s];
+
 function cleanName(s) {
-  if (RENAME[s]) return RENAME[s];
+  if (renamed(s)) return renamed(s);
   let out = s.replace(/\s*[\[(]([^\])]*)[\])]\s*/g, (m, inner) => isCode(inner.trim()) ? " " : m).trim();
   out = out.split(/\s+[-–]\s+/).filter(p => !isCode(p.trim())).join(" - ").trim();
   const words = out.split(" ");
   while (words.length > 1 && isCode(words[words.length - 1])) words.pop();   // code collé à la fin
   while (words.length > 1 && isCode(words[0])) words.shift();               // code collé au début
   out = words.join(" ");
-  if (RENAME[out]) return RENAME[out];
+  if (renamed(out)) return renamed(out);
   return isCode(out) ? "" : out;
 }
 
@@ -660,9 +679,9 @@ function isCancelled(category, lines) {
   return /annul|cancel/i.test(category) || lines.some(l => /\bannul|\bcancel/i.test(l));
 }
 
-// Cours masqué par l'utilisateur (voir HIDE)
+// Cours masqué par l'utilisateur (voir HIDE, et le menu « Réglages »)
 function isHidden(e) {
-  return HIDE.some(h => h instanceof RegExp
+  return [...HIDE, ...(Array.isArray(PREFS.HIDE) ? PREFS.HIDE : [])].some(h => h instanceof RegExp
     ? h.test(e.title)
     : [e.module, e.category].some(s => s.toLowerCase().includes(String(h).toLowerCase())));
 }
@@ -1628,6 +1647,154 @@ async function testNotification() {
   await n.schedule();
 }
 
+// ---------- réglages depuis le menu ----------
+// Enregistrés dans PREFS_FILE, lus au démarrage du script (voir pref).
+function savePrefs() {
+  FileManager.local().writeString(PREFS_FILE, JSON.stringify(PREFS));
+}
+
+// Choix dans une liste : index du bouton, -1 = « Retour »
+async function pick(title, message, labels) {
+  const a = new Alert();
+  a.title = title;
+  if (message) a.message = message;
+  labels.forEach(l => a.addAction(l));
+  a.addCancelAction("Retour");
+  return a.present();
+}
+
+// Saisie de texte : valeurs des champs, ou null si annulé
+async function ask(title, message, fields) {
+  const a = new Alert();
+  a.title = title;
+  if (message) a.message = message;
+  fields.forEach(([placeholder, value]) => a.addTextField(placeholder, value || ""));
+  a.addAction("OK");
+  a.addCancelAction("Annuler");
+  if ((await a.present()) === -1) return null;
+  return fields.map((_, i) => a.textFieldValue(i).trim());
+}
+
+// Matières de l'emploi du temps en mémoire : on les choisit au lieu de les taper
+function knownModules() {
+  const c = readCache();
+  if (!c || !Array.isArray(c.data)) return [];
+  return [...new Set(parseAll(c.data).filter(e => !e.allDay).map(e => e.module).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b)).slice(0, 25);
+}
+
+async function hideMenu() {
+  for (;;) {
+    const list = Array.isArray(PREFS.HIDE) ? PREFS.HIDE : [];
+    const mods = knownModules();
+    const labels = [...list.map(h => `✕ ${h}`), ...(mods.length ? ["Choisir dans mon emploi du temps…"] : []), "Taper un nom…"];
+    const c = await pick("Cours masqués",
+      "Masqués partout : widget, rappels, notifications, calendrier. Touche ✕ pour afficher de nouveau.", labels);
+    if (c === -1) return;
+    if (c < list.length) { list.splice(c, 1); }
+    else if (mods.length && c === list.length) {
+      const m = await pick("Masquer quelle matière ?", null, mods);
+      if (m === -1) continue;
+      list.push(mods[m]);
+    } else {
+      const v = await ask("Masquer un cours", "Tout cours dont la matière ou le type contient ce texte " +
+                          "(majuscules indifférentes), par ex. « Allemand » ou « Sport ».", [["Texte"]]);
+      if (!v || !v[0]) continue;
+      list.push(v[0]);
+    }
+    PREFS.HIDE = list;
+    savePrefs();
+  }
+}
+
+async function renameMenu() {
+  for (;;) {
+    const map = PREFS.RENAME && typeof PREFS.RENAME === "object" ? PREFS.RENAME : {};
+    const keys = Object.keys(map);
+    const mods = knownModules().filter(m => !Object.values(map).includes(m));
+    const labels = [...keys.map(k => `✕ ${k} → ${map[k]}`), ...(mods.length ? ["Choisir dans mon emploi du temps…"] : []),
+                    "Taper un code ou un nom…"];
+    const c = await pick("Matières renommées", "Touche ✕ pour revenir au nom d'origine.", labels);
+    if (c === -1) return;
+    if (c < keys.length) { delete map[keys[c]]; }
+    else {
+      let from = "";
+      if (mods.length && c === keys.length) {
+        const m = await pick("Renommer quelle matière ?", null, mods);
+        if (m === -1) continue;
+        from = mods[m];
+      }
+      const v = await ask("Renommer", from ? `« ${from} » devient :` :
+                          "Code (ex. I2GSIM07) ou nom affiché, puis nouveau nom.",
+                          from ? [["Nouveau nom", from]] : [["Code ou nom affiché"], ["Nouveau nom"]]);
+      if (!v) continue;
+      const [key, name] = from ? [from, v[0]] : v;
+      if (!key || !name || key === name) continue;
+      map[key] = name;
+    }
+    PREFS.RENAME = map;
+    savePrefs();
+  }
+}
+
+// Menu « Réglages ». Renvoie true si quelque chose a changé.
+async function settingsMenu() {
+  const before = JSON.stringify(PREFS);
+  const initial = { THEME, REMIND_BEFORE_MIN, NOTIFY_CHANGES, SYNC_CALENDAR, SHOW_COUNTDOWN };
+  const cur = k => pref(k, initial[k]);
+  const set = (k, v) => { PREFS[k] = v; savePrefs(); };
+  const yes = b => (b ? "oui" : "non");
+  const themes = [["auto", "automatique"], ["light", "clair"], ["dark", "sombre"]];
+  const reminders = [0, 5, 10, 15, 30];
+  for (;;) {
+    const nHide = Array.isArray(PREFS.HIDE) ? PREFS.HIDE.length : 0;
+    const nRen = PREFS.RENAME ? Object.keys(PREFS.RENAME).length : 0;
+    const rows = [
+      [`Thème : ${(themes.find(t => t[0] === cur("THEME")) || themes[0])[1]}`, async () => {
+        const c = await pick("Thème", null, themes.map(t => t[1]));
+        if (c !== -1) set("THEME", themes[c][0]);
+      }],
+      [`Rappel avant chaque cours : ${cur("REMIND_BEFORE_MIN") ? cur("REMIND_BEFORE_MIN") + " min" : "non"}`, async () => {
+        const c = await pick("Rappel avant chaque cours", "Notification avec la salle.",
+                             reminders.map(m => (m ? `${m} min avant` : "Pas de rappel")));
+        if (c !== -1) set("REMIND_BEFORE_MIN", reminders[c]);
+      }],
+      [`Alerte si l'emploi du temps change : ${yes(cur("NOTIFY_CHANGES"))}`, () => set("NOTIFY_CHANGES", !cur("NOTIFY_CHANGES"))],
+      [`Copie dans le calendrier iPhone : ${yes(cur("SYNC_CALENDAR"))}`, () => set("SYNC_CALENDAR", !cur("SYNC_CALENDAR"))],
+      [`Compte à rebours avant un cours : ${yes(cur("SHOW_COUNTDOWN"))}`, () => set("SHOW_COUNTDOWN", !cur("SHOW_COUNTDOWN"))],
+      [`Cours masqués (${nHide})`, hideMenu],
+      [`Matières renommées (${nRen})`, renameMenu],
+      ["Rétablir les réglages par défaut", () => { for (const k of Object.keys(PREFS)) delete PREFS[k]; savePrefs(); }],
+    ];
+    const a = new Alert();
+    a.title = "Réglages";
+    a.message = "Touche une ligne pour la modifier.";
+    rows.forEach(([label]) => a.addAction(label));
+    a.addCancelAction("Terminé");
+    const c = await a.present();
+    if (c === -1) break;
+    await rows[c][1]();
+  }
+  const changed = JSON.stringify(PREFS) !== before;
+  if (changed) {
+    // Prochain passage du widget : nouveau téléchargement → rappels et calendrier refaits
+    // avec les nouveaux réglages (sans attendre FETCH_MIN)
+    const c = readCache();
+    if (c) { c.at = 0; writeCache(c); }
+    const done = new Alert();
+    done.title = "Réglages enregistrés ✅";
+    done.message = "Le widget les prend en compte à sa prochaine mise à jour (quelques minutes, " +
+                   `ou au matin la nuit).` +
+                   (initial.SYNC_CALENDAR && !cur("SYNC_CALENDAR")
+                     ? `\nLes cours déjà copiés restent dans le calendrier « ${CALENDAR_NAME} » : ` +
+                       "tu peux le supprimer dans l'app Calendrier."
+                     : "");
+    done.addAction("OK");
+    await done.present();
+  }
+  return changed;
+}
+
 // ---------- Siri / Raccourcis ----------
 // « Dis Siri, <nom du script> » ou action « Exécuter le script » de Raccourcis :
 // réponse en texte, réutilisable dans un raccourci. Paramètre du raccourci :
@@ -1734,6 +1901,7 @@ if (!config.runsInWidget && DEMO) {
     ["Aperçu vue semaine",                { family: "large",  view: "week" }],
     ["Aperçu prochain cours",             { family: "small",  view: "next" }],
     ["Aperçu écran verrouillé",           { family: "accessoryRectangular", view: "next" }],
+    ["Réglages",                          { settings: true }],
     ["Changer mes identifiants",          { creds: true }],
     ["Tester les notifications",          { testNotif: true }],
     ["Données brutes (debug)",            { debug: true }],
@@ -1753,6 +1921,7 @@ if (!config.runsInWidget && DEMO) {
   if (choice.unlock) { clearAuthLock(); AUTH_BAD = false; }
   if (choice.creds) await askCredentials();
   if (choice.testNotif) { await testNotification(); Script.complete(); return; }
+  if (choice.settings) { await settingsMenu(); Script.complete(); return; }
   if (choice.update) {
     const a = new Alert();
     a.title = "Mise à jour";
