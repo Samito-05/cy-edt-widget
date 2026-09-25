@@ -11,7 +11,7 @@
 //  Fichier généré par tools/build-demo.js : ne pas modifier à la main.
 // ============================================================
 
-const VERSION = "1.3.4";         // version de ce script (comparée à celle du dépôt)
+const VERSION = "1.4.0";         // version de ce script (comparée à celle du dépôt)
 const REPO = "https://github.com/Samito-05/cy-edt-widget";
 const REPO_RAW = "https://raw.githubusercontent.com/Samito-05/cy-edt-widget/main/celcat-widget.js";
 
