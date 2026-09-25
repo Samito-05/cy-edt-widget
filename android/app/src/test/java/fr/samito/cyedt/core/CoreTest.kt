@@ -281,4 +281,25 @@ class WeekTest {
         assertEquals(300f, g[1].top)
         assertEquals(1, g[1].lanes[0].size)
     }
+
+    @Test fun cookiesSurviveRestartUnquoted() {
+        val store = MemStore()
+        var now = 1_000_000L
+        val a = CelcatHttp(store) { now }
+        a.setCookie(".AspNetCore.Antiforgery.X=abc-123_Z; path=/; samesite=strict; httponly")
+        a.setCookie(".AspNetCore.Cookies=sess; path=/; secure; httponly")
+        a.setCookie("short=1; Max-Age=60")
+        a.setCookie("gone=x; expires=Thu, 01 Jan 1970 00:00:00 GMT")
+        assertEquals(".AspNetCore.Antiforgery.X=abc-123_Z; .AspNetCore.Cookies=sess; short=1", a.cookieHeader())
+        // Nouveau processus : relu du disque, renvoyé tel quel (pas de $Version ni de guillemets)
+        store.files["celcat_cookies_v2.json"] = JSONObject()
+            .put("s", JSONObject().put("v", "sess").put("e", 0))
+            .put("t", JSONObject().put("v", "1").put("e", now + 60000)).toString()
+        val c = CelcatHttp(store) { now }
+        assertEquals("s=sess; t=1", c.cookieHeader())
+        now += 120000
+        assertEquals("s=sess", c.cookieHeader())      // cookie expiré plus envoyé
+        c.setCookie("s=; Max-Age=0")
+        assertEquals("", c.cookieHeader())
+    }
 }
