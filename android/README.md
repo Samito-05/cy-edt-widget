@@ -33,13 +33,13 @@ Mise à jour : télécharger le nouvel APK et l'installer par-dessus (identifian
 
 ## Fonctionnalités
 
-Comme la version iOS : couleurs par type (CM rouge, TD bleu, TP violet, examen orange, vert réservé au cours en cours), cours annulés grisés, fériés/vacances en bandeau, mode clair/sombre (ou forcé), cours masqués et matières renommées, notification quand l'emploi du temps change (7 prochains jours), rappel 5 à 30 min avant chaque cours (par pas de 5 min) avec la salle, cache hors ligne, aucun appel réseau la nuit (22h → 7h), pauses progressives en cas de panne.
+Comme la version iOS : couleurs par type (CM rouge, TD bleu, TP violet, examen orange, vert réservé au cours en cours), cours annulés grisés, fériés/vacances en bandeau, mode clair/sombre (ou forcé), cours masqués, matières renommées, salle de ton groupe quand un cours liste plusieurs salles, notification quand l'emploi du temps change (7 prochains jours), rappel 5 à 30 min avant chaque cours (par pas de 5 min) avec la salle, cache hors ligne, aucun appel réseau la nuit (22h → 7h), pauses progressives en cas de panne.
 
 **Protection du compte CY** : identique à iOS. Dès que CELCAT refuse le mot de passe, plus rien n'est envoyé tant que l'identifiant ou le mot de passe n'a pas été modifié (ou via « Débloquer et réessayer une fois »). Après 2 connexions non confirmées, verrou aussi.
 
 Option **compte à rebours** (Réglages) : « dans 12:34 » dans l'heure avant un cours, sur le widget prochain cours et le petit widget live.
 
-L'app : prochain cours en grand (« En cours », « Dans 12 min », salle), liste du jour avec la couleur de chaque matière, cours annulés barrés, erreur de connexion bien visible. Le thème, le rappel et les interrupteurs s'appliquent dès qu'on les change (rappels replanifiés, widgets redessinés) ; le bouton « Enregistrer » ne sert qu'aux cours masqués et matières renommées.
+L'app : prochain cours en grand (« En cours », « Dans 12 min », salle), liste du jour avec la couleur de chaque matière, cours annulés barrés, erreur de connexion bien visible. Le thème, le rappel et les interrupteurs s'appliquent dès qu'on les change (rappels replanifiés, widgets redessinés) ; le bouton « Enregistrer » ne sert qu'aux réglages des cours (masqués, renommés, salle de ton groupe).
 
 Pas sur Android : copie dans le calendrier, et écran verrouillé (One UI n'accepte pas les widgets d'autres apps sur l'écran verrouillé ; le rappel avant chaque cours s'en rapproche). La vue semaine est dessinée en image : si le mode sombre change, elle suit au rafraîchissement suivant (15 min au plus).
 

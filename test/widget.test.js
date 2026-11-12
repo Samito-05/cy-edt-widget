@@ -814,6 +814,20 @@ const ok = (name, cond, extra = "") => { if (cond) { pass++; console.log("  OK  
     ok("réglage : rappels désactivés", !global.notifications.some(n => /dans \d+ min/.test(n.title || "")),
        JSON.stringify(global.notifications.map(n => n.title)));
 
+    // Plusieurs salles dans un cours : toutes, ou celle du groupe choisi (ROOMS)
+    const multi = ev("m1", 1, 9, "TD", "Anglais", "FT202");
+    multi.description += "<br />FER FT310 SALLE DE TD 40p";
+    NET = { "/Home/GetCalendarData": JSON.stringify([multi]) };
+    fsn.writeFileSync(PREFS_PATH, JSON.stringify({ REMIND_BEFORE_MIN: 0 }));
+    fsn.rmSync(CACHE, { force: true });
+    await load();
+    ok("plusieurs salles : toutes affichées", global.texts().some(s => /FT202, FER FT310/.test(s)), JSON.stringify(global.texts()).slice(0, 200));
+    fsn.writeFileSync(PREFS_PATH, JSON.stringify({ REMIND_BEFORE_MIN: 0, ROOMS: { anglais: "ft310" } }));
+    fsn.rmSync(CACHE, { force: true });
+    await load();
+    ok("salle du groupe choisie (ROOMS)", global.texts().some(s => /FT310/.test(s)) && !global.texts().some(s => /FT202/.test(s)), JSON.stringify(global.texts()).slice(0, 200));
+    NET = { "/Home/GetCalendarData": JSON.stringify(BASE_EVENTS) };
+
     fsn.writeFileSync(PREFS_PATH, JSON.stringify({ REMIND_BEFORE_MIN: "zéro", HIDE: "pas une liste" }));
     fsn.rmSync(CACHE, { force: true }); global.notifications = [];
     let err = null;
