@@ -112,12 +112,19 @@ class Settings(ctx: Context) {
         get() = p.getString("rename", "") ?: ""
         set(v) { p.edit().putString("rename", v).apply() }
 
+    var roomText: String                                // « Matière = texte de la salle », une par ligne
+        get() = p.getString("room", "") ?: ""
+        set(v) { p.edit().putString("room", v).apply() }
+
+    private fun pairs(t: String) = t.lines().mapNotNull { l ->
+        val i = l.indexOf('=')
+        if (i <= 0) null else l.substring(0, i).trim() to l.substring(i + 1).trim()
+    }.filter { it.first.isNotEmpty() && it.second.isNotEmpty() }
+
     fun parsePrefs() = ParsePrefs(
         hide = hideText.lines().map { it.trim() }.filter { it.isNotEmpty() },
-        rename = renameText.lines().mapNotNull { l ->
-            val i = l.indexOf('=')
-            if (i <= 0) null else l.substring(0, i).trim() to l.substring(i + 1).trim()
-        }.filter { it.first.isNotEmpty() && it.second.isNotEmpty() }.toMap(),
+        rename = pairs(renameText).toMap(),
+        rooms = pairs(roomText),
     )
 }
 

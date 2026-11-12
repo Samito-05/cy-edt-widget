@@ -29,6 +29,7 @@ data class Course(
 data class ParsePrefs(
     val hide: List<String> = emptyList(),
     val rename: Map<String, String> = emptyMap(),
+    val rooms: List<Pair<String, String>> = emptyList(),   // « Anglais = FT310 » : salle à garder pour cette matière
 )
 
 object Parser {
@@ -180,11 +181,19 @@ object Parser {
     fun isCancelled(category: String, lines: List<String>) =
         Regex("annul|cancel", IC).containsMatchIn(category) || lines.any { Regex("\\bannul|\\bcancel", IC).containsMatchIn(it) }
 
-    fun parse(e: JSONObject, frequent: Set<String>, rename: Map<String, String>): Course? {
+    // Plusieurs salles dans un même cours (groupes en parallèle) : celle choisie pour la matière,
+    // sinon toutes. Une règle sans correspondance est ignorée.
+    fun pickRoom(rooms: List<String>, module: String, rules: List<Pair<String, String>>): String {
+        val all = rooms.map(::shortRoom).distinct()
+        val rule = rules.firstOrNull { module.contains(it.first, ignoreCase = true) }
+        val mine = rule?.let { r -> rooms.filter { it.contains(r.second, ignoreCase = true) }.map(::shortRoom).distinct() }
+        return (mine?.takeIf { it.isNotEmpty() } ?: all).joinToString(", ")
+    }
+
+    fun parse(e: JSONObject, frequent: Set<String>, rename: Map<String, String>, rooms: List<Pair<String, String>> = emptyList()): Course? {
         val start = parseDate(e.opt("start")) ?: return null
         val lines = splitLines(e)
         val category = decode(str(e, "eventCategory") ?: lines.firstOrNull() ?: "")
-        val room = shortRoom(lines.firstOrNull(::isRoom) ?: strings(e.opt("sites")).map(::decode).joinToString(", "))
         val staff = lines.filter { it != category && isStaff(it) }.joinToString(", ")
 
         // Matière : on nettoie les codes, on note chaque candidat, le meilleur gagne
@@ -195,6 +204,8 @@ object Parser {
         var module = names.firstOrNull() ?: ""
         module = module.replace(Regex("^" + Regex.escape(category) + "\\s*[-:]\\s*"), "")
 
+        val room = lines.filter(::isRoom).takeIf { it.isNotEmpty() }?.let { pickRoom(it, module, rooms) }
+            ?: shortRoom(strings(e.opt("sites")).map(::decode).joinToString(", "))
         val type = TYPE_COLORS.firstOrNull { it.first.containsMatchIn(category) }
         val rawEnd = parseDate(e.opt("end"))
         val end = if (rawEnd == null || rawEnd.isBefore(start)) start.plusHours(1) else rawEnd
@@ -226,7 +237,7 @@ object Parser {
     fun parseAll(data: JSONArray, prefs: ParsePrefs = ParsePrefs()): List<Course> {
         val ok = (0 until data.length()).mapNotNull { data.opt(it) as? JSONObject }.filter { parseDate(it.opt("start")) != null }
         val f = frequentLines(ok, prefs.rename)
-        return ok.mapNotNull { parse(it, f, prefs.rename) }.filter { !isHidden(it, prefs.hide) }
+        return ok.mapNotNull { parse(it, f, prefs.rename, prefs.rooms) }.filter { !isHidden(it, prefs.hide) }
     }
 
     /** Matières connues (pour les menus « masquer » / « renommer ») */

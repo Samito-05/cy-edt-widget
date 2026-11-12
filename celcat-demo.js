@@ -645,7 +645,6 @@ const courseColor = hex => isGreen(hex) ? NOT_GREEN : hex;
 function parse(e, frequent) {
   const lines = splitLines(e);
   const category = decode(e.eventCategory || lines[0] || "");
-  const room = shortRoom(lines.find(isRoom) || (e.sites || []).map(decode).join(", "));
   const staff = lines.filter(l => l !== category && isStaff(l)).join(", ");
 
   // Matière : on nettoie les codes, on note chaque candidat, le meilleur gagne
@@ -655,6 +654,13 @@ function parse(e, frequent) {
   let module = names[0] || "";
   const esc = category.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   module = module.replace(new RegExp(`^${esc}\\s*[-:]\\s*`), "");
+
+  // Plusieurs salles (groupes en parallèle) : celle choisie pour la matière (réglage ROOMS), sinon toutes
+  const rooms = lines.filter(isRoom);
+  const rule = Object.entries(PREFS.ROOMS || {}).find(([m]) => module.toLowerCase().includes(m.toLowerCase()));
+  const mine = rule ? rooms.filter(r => r.toLowerCase().includes(String(rule[1]).toLowerCase())) : [];
+  const room = rooms.length ? [...new Set((mine.length ? mine : rooms).map(shortRoom))].join(", ")
+                            : shortRoom((e.sites || []).map(decode).join(", "));
 
   const type = TYPE_COLORS.find(t => t.re.test(category));
   const start = parseDate(e.start);
@@ -1561,7 +1567,7 @@ async function checkUpdate() {
 // Réglages reportés d'une version à l'autre (voir « réglages » en haut du fichier)
 const SETTINGS = ["DAYS_AHEAD", "FETCH_MIN", "NIGHT_START", "NIGHT_END", "HIDE_AFTER_MIN",
   "SHOW_COUNTDOWN", "LIVE_FAMILIES", "NOTIFY_CHANGES", "CHANGES_DAYS", "REMIND_BEFORE_MIN",
-  "SYNC_CALENDAR", "CALENDAR_NAME", "THEME", "HIDE", "RENAME", "TYPE_COLORS", "MAX_REMINDERS"];
+  "SYNC_CALENDAR", "CALENDAR_NAME", "THEME", "HIDE", "RENAME", "ROOMS", "TYPE_COLORS", "MAX_REMINDERS"];
 
 // Texte complet d'une déclaration « const NAME = … ; », sur une ou plusieurs lignes
 // (tableau / objet ouvert en fin de ligne, refermé par « ]; » ou « }; » en début de ligne)
@@ -1738,6 +1744,25 @@ async function renameMenu() {
   }
 }
 
+async function roomsMenu() {
+  for (;;) {
+    const map = PREFS.ROOMS && typeof PREFS.ROOMS === "object" ? PREFS.ROOMS : {};
+    const keys = Object.keys(map);
+    const c = await pick("Salle de mon groupe", "Cours avec plusieurs salles : touche ✕ pour tout réafficher.",
+                         [...keys.map(k => `✕ ${k} → ${map[k]}`), "Ajouter…"]);
+    if (c === -1) return;
+    if (c < keys.length) delete map[keys[c]];
+    else {
+      const v = await ask("Salle de mon groupe", "Matière (ex. Anglais), puis texte de ta salle (ex. FT310).",
+                          [["Matière"], ["Salle ou texte"]]);
+      if (!v || !v[0] || !v[1]) continue;
+      map[v[0]] = v[1];
+    }
+    PREFS.ROOMS = map;
+    savePrefs();
+  }
+}
+
 // Menu « Réglages ». Renvoie true si quelque chose a changé.
 async function settingsMenu() {
   const before = JSON.stringify(PREFS);
@@ -1765,6 +1790,7 @@ async function settingsMenu() {
       [`Compte à rebours : ${yes(cur("SHOW_COUNTDOWN"))}`, () => set("SHOW_COUNTDOWN", !cur("SHOW_COUNTDOWN"))],
       [`Cours masqués (${nHide})`, hideMenu],
       [`Matières renommées (${nRen})`, renameMenu],
+      [`Salle de mon groupe (${PREFS.ROOMS ? Object.keys(PREFS.ROOMS).length : 0})`, roomsMenu],
       ["Tout remettre par défaut", () => { for (const k of Object.keys(PREFS)) delete PREFS[k]; savePrefs(); }],
     ];
     const a = new Alert();

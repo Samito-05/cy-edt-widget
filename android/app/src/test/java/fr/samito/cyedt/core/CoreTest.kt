@@ -106,6 +106,14 @@ class ParserTest {
         assertEquals(3, Parser.parseAll(data, ParsePrefs(hide = listOf("/^CM - /i"))).size)
         assertEquals("Stats", Parser.parseAll(data, ParsePrefs(rename = mapOf("Statistiques" to "Stats")))[0].module)
     }
+
+    @Test fun severalRooms() {
+        val data = JSONArray().put(ev(1, "2026-09-23T08:00:00", "2026-09-23T10:00:00",
+            "TD<br />Anglais<br />FER FT202 SALLE DE TD 40p<br />FER FT310 SALLE DE TD 40p<br />SMITH JANE"))
+        assertEquals("FER FT202, FER FT310", Parser.parseAll(data)[0].room)
+        assertEquals("FER FT310", Parser.parseAll(data, ParsePrefs(rooms = listOf("anglais" to "ft310")))[0].room)
+        assertEquals("FER FT202, FER FT310", Parser.parseAll(data, ParsePrefs(rooms = listOf("anglais" to "xx")))[0].room)
+    }
 }
 
 class ScheduleTest {

@@ -72,6 +72,7 @@ class MainActivity : Activity() {
         v<CompoundButton>(R.id.countdown).isChecked = settings.countdown
         v<EditText>(R.id.hide).setText(settings.hideText)
         v<EditText>(R.id.rename).setText(settings.renameText)
+        v<EditText>(R.id.rooms).setText(settings.roomText)
 
         v<View>(R.id.save).setOnClickListener { saveCreds() }
         v<View>(R.id.refresh).setOnClickListener { load(force = true) }
@@ -321,6 +322,7 @@ class MainActivity : Activity() {
         settings.countdown = v<CompoundButton>(R.id.countdown).isChecked
         settings.hideText = v<EditText>(R.id.hide).text.toString()
         settings.renameText = v<EditText>(R.id.rename).text.toString()
+        settings.roomText = v<EditText>(R.id.rooms).text.toString()
         val r = Edt.celcat(this).cached()
         show(r)
         val list = courses
