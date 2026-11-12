@@ -321,7 +321,7 @@ object Widgets {
             today -> "${Schedule.hm(e.start)} – ${Schedule.hm(e.end)}"
             else -> "${Schedule.dayLabel(e.start.toLocalDate(), now.toLocalDate()).split(" ")[0]} · ${Schedule.hm(e.start)}"
         })
-        v.setTextViewTextSize(R.id.room, TypedValue.COMPLEX_UNIT_SP, if (e.room.length > 12) 20f else 26f)
+        v.setTextViewTextSize(R.id.room, TypedValue.COMPLEX_UNIT_SP, when { e.room.length > 20 -> 14f; e.room.length > 12 -> 20f; else -> 26f })
         return v
     }
 }

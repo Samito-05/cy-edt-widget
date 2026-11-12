@@ -452,6 +452,12 @@
                 android:inputType="textMultiLine"
                 android:minLines="2" />
 
+            <TextView
+                android:id="@+id/rooms_hint"
+                style="@style/Hint"
+                android:paddingTop="8dp"
+                android:textIsSelectable="true" />
+
             <Button
                 android:id="@+id/save_settings"
                 style="@style/Btn"

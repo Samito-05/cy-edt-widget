@@ -206,6 +206,10 @@ class MainActivity : Activity() {
         showDay(now)
         val modules = Parser.knownModules(courses)
         v<TextView>(R.id.modules).text = if (modules.isEmpty()) "" else "Matières : " + modules.joinToString(", ")
+        // Cours qui listent plusieurs salles : de quoi remplir « Salle de mon groupe »
+        v<TextView>(R.id.rooms_hint).text = courses.filter { ", " in it.room }.groupBy { it.module }
+            .map { (m, cs) -> "$m : " + cs.flatMap { it.room.split(", ") }.distinct().joinToString(" | ") }
+            .joinToString("\n").let { if (it.isEmpty()) "" else "Plusieurs salles détectées :\n$it" }
     }
 
     /** Carte « Prochain cours » */
